@@ -1,0 +1,185 @@
+# M4-Warm shader options
+# Each option becomes a dropdown in Iris's Shader Pack Settings.
+# Format: option.NAME=Display, option.NAME.0=Value 0, etc.
+
+# --- Quality Preset ---
+option.M4WARM_PRESET=Quality Preset
+option.M4WARM_PRESET.0=Potato (8GB, FPS first)
+option.M4WARM_PRESET.1=Low
+option.M4WARM_PRESET.2=Medium (16GB recommended)
+option.M4WARM_PRESET.3=High
+option.M4WARM_PRESET.4=Ultra (24GB+)
+
+# --- Lighting ---
+option.M4WARM_SUN_INTENSITY=Sun Brightness
+option.M4WARM_SUN_INTENSITY.0=Dim
+option.M4WARM_SUN_INTENSITY.1=Normal
+option.M4WARM_SUN_INTENSITY.2=Bright
+
+option.M4WARM_MOON_INTENSITY=Moon Brightness
+option.M4WARM_MOON_INTENSITY.0=Off
+option.M4WARM_MOON_INTENSITY.1=Dim
+option.M4WARM_MOON_INTENSITY.2=Normal
+
+option.M4WARM_AMBIENT=Ambient Floor
+option.M4WARM_AMBIENT.0=Low
+option.M4WARM_AMBIENT.1=Normal
+option.M4WARM_AMBIENT.2=High
+
+option.M4WARM_EXPOSURE=Exposure
+option.M4WARM_EXPOSURE.0=Low
+option.M4WARM_EXPOSURE.1=Normal
+option.M4WARM_EXPOSURE.2=High
+
+# --- Atmosphere ---
+option.M4WARM_FOG=Fog Distance
+option.M4WARM_FOG.0=Off
+option.M4WARM_FOG.1=Light
+option.M4WARM_FOG.2=Normal
+option.M4WARM_FOG.3=Thick
+
+option.M4WARM_FOG_TINT=Fog Color
+option.M4WARM_FOG_TINT.0=Cool blue
+option.M4WARM_FOG_TINT.1=Neutral grey
+option.M4WARM_FOG_TINT.2=Warm beige
+option.M4WARM_FOG_TINT.3=Warm gold
+option.M4WARM_FOG_TINT.4=Auto (matches sun)
+
+option.M4WARM_GODRAYS=God Rays
+option.M4WARM_GODRAYS.0=Off
+option.M4WARM_GODRAYS.1=Subtle
+option.M4WARM_GODRAYS.2=Strong
+
+option.M4WARM_GODRAY_QUALITY=God Ray Quality
+option.M4WARM_GODRAY_QUALITY.0=Fast (4 steps)
+option.M4WARM_GODRAY_QUALITY.1=Normal (8 steps)
+option.M4WARM_GODRAY_QUALITY.2=Smooth (16 steps)
+
+# --- Color Grading ---
+option.M4WARM_TONEMAP=Tonemap
+option.M4WARM_TONEMAP.0=ACES Filmic
+option.M4WARM_TONEMAP.1=Reinhard
+
+option.M4WARM_WARM_TINT=Warm Tint
+option.M4WARM_WARM_TINT.0=Off
+option.M4WARM_WARM_TINT.1=Subtle
+option.M4WARM_WARM_TINT.2=Normal
+option.M4WARM_WARM_TINT.3=Strong
+
+option.M4WARM_SATURATION=Saturation
+option.M4WARM_SATURATION.0=Desaturated
+option.M4WARM_SATURATION.1=Normal
+option.M4WARM_SATURATION.2=Vivid
+
+option.M4WARM_CONTRAST=Contrast
+option.M4WARM_CONTRAST.0=Low
+option.M4WARM_CONTRAST.1=Normal
+option.M4WARM_CONTRAST.2=High
+
+option.M4WARM_VIBRANCE=Vibrance
+option.M4WARM_VIBRANCE.0=Off
+option.M4WARM_VIBRANCE.1=Subtle
+option.M4WARM_VIBRANCE.2=Strong
+
+option.M4WARM_VIGNETTE=Vignette
+option.M4WARM_VIGNETTE.0=Off
+option.M4WARM_VIGNETTE.1=Subtle
+option.M4WARM_VIGNETTE.2=Strong
+
+# --- Shadows ---
+option.M4WARM_SHADOWS=Shadow Quality
+option.M4WARM_SHADOWS.0=Off
+option.M4WARM_SHADOWS.1=Soft (2x2 PCF)
+option.M4WARM_SHADOWS.2=Softer (3x3 PCF)
+
+# --- Water ---
+option.M4WARM_WATER=Water Effect
+option.M4WARM_WATER.0=Off
+option.M4WARM_WATER.1=Refraction only
+option.M4WARM_WATER.2=Reflection + Refraction
+
+option.M4WARM_WATER_QUALITY=Water Quality
+option.M4WARM_WATER_QUALITY.0=Low
+option.M4WARM_WATER_QUALITY.1=Normal
+option.M4WARM_WATER_QUALITY.2=High
+
+# --- Ray Tracing ---
+# NOTE: Genuine hardware ray tracing is NOT possible for Minecraft in Iris.
+# Minecraft is voxel-based; Iris does not expose the voxel data to shaders.
+# Apple M4 RT cores require a triangle-mesh BVH which Minecraft doesn't have.
+# ALL "ray tracing" in this pack is screen-space raymarching (BSL/Complementary/SEUS technique).
+# The "True RT" option here is a HONEST best-effort approximation: more steps,
+# full resolution, wider AO radius. Visually rich, still not real RT.
+option.M4WARM_RT_MODE=Ray Tracing Mode
+option.M4WARM_RT_MODE.0=Off
+option.M4WARM_RT_MODE.1=Screen-Space (recommended)
+option.M4WARM_RT_MODE.2=True RT (best-effort approximation, slow)
+
+option.M4WARM_SSR_STEPS=Reflection Quality
+option.M4WARM_SSR_STEPS.0=Use Preset
+option.M4WARM_SSR_STEPS.1=Low (6 steps)
+option.M4WARM_SSR_STEPS.2=Medium (8 steps)
+option.M4WARM_SSR_STEPS.3=Normal (12 steps)
+option.M4WARM_SSR_STEPS.4=High (16 steps)
+option.M4WARM_SSR_STEPS.5=Ultra (24 steps)
+
+option.M4WARM_SSR_DISTANCE=Reflection Distance
+option.M4WARM_SSR_DISTANCE.0=Near (25 units)
+option.M4WARM_SSR_DISTANCE.1=Normal (60 units)
+option.M4WARM_SSR_DISTANCE.2=Far (120 units)
+
+option.M4WARM_SSR_STRENGTH=Reflection Strength
+option.M4WARM_SSR_STRENGTH.0=Off
+option.M4WARM_SSR_STRENGTH.1=Subtle
+option.M4WARM_SSR_STRENGTH.2=Normal
+option.M4WARM_SSR_STRENGTH.3=Strong
+
+option.M4WARM_SSR_RES=Reflection Resolution
+option.M4WARM_SSR_RES.0=Half (recommended)
+option.M4WARM_SSR_RES.1=Full (heavier)
+
+option.M4WARM_AO_DIRS=AO Sample Directions
+option.M4WARM_AO_DIRS.0=Use Preset
+option.M4WARM_AO_DIRS.1=4 directions
+option.M4WARM_AO_DIRS.2=6 directions
+option.M4WARM_AO_DIRS.3=8 directions
+
+option.M4WARM_AO_STEPS=AO Step Count
+option.M4WARM_AO_STEPS.0=Use Preset
+option.M4WARM_AO_STEPS.1=2 steps
+option.M4WARM_AO_STEPS.2=3 steps
+option.M4WARM_AO_STEPS.3=4 steps
+option.M4WARM_AO_STEPS.4=6 steps
+
+option.M4WARM_AO_RADIUS=AO Radius
+option.M4WARM_AO_RADIUS.0=Tight
+option.M4WARM_AO_RADIUS.1=Normal
+option.M4WARM_AO_RADIUS.2=Wide
+
+option.M4WARM_AO_STRENGTH=AO Strength
+option.M4WARM_AO_STRENGTH.0=Off
+option.M4WARM_AO_STRENGTH.1=Subtle
+option.M4WARM_AO_STRENGTH.2=Normal
+option.M4WARM_AO_STRENGTH.3=Strong
+
+# --- Sky & Clouds ---
+option.M4WARM_SKY_BRIGHTNESS=Sky Brightness
+option.M4WARM_SKY_BRIGHTNESS.0=Dim
+option.M4WARM_SKY_BRIGHTNESS.1=Normal
+option.M4WARM_SKY_BRIGHTNESS.2=Bright
+
+option.M4WARM_STARS=Stars
+option.M4WARM_STARS.0=Off
+option.M4WARM_STARS.1=Subtle
+option.M4WARM_STARS.2=Normal
+
+option.M4WARM_CLOUDS=Clouds
+option.M4WARM_CLOUDS.0=Off
+option.M4WARM_CLOUDS.1=Simple
+option.M4WARM_CLOUDS.2=Detailed
+
+# --- Performance ---
+option.M4WARM_INTERNAL_SCALE=Internal Render Scale
+option.M4WARM_INTERNAL_SCALE.0=0.5x (potato)
+option.M4WARM_INTERNAL_SCALE.1=0.75x (balanced)
+option.M4WARM_INTERNAL_SCALE.2=1.0x (native)

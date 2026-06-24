@@ -1,0 +1,9 @@
+prefix=/var/folders/6m/fl3m29w96ld_9mn4x5t6w51r0000gn/T/opencode/kiemfp-Roblox/Contribs/darwin/x86/openssl/openssl-1.0.2c
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: OpenSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Version: 1.1.1w
+Requires: libssl libcrypto

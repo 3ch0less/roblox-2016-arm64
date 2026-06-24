@@ -1,0 +1,6 @@
+{
+  "pack": {
+    "pack_format": 15,
+    "description": "M4-Warm — shader pack tuned for MacBook Air M4 (10-core GPU, 16GB unified, Metal 3). Warm desaturated palette, 8-step dithered god rays, 2x2 PCF shadows, screen-space water, no raytracing."
+  }
+}
