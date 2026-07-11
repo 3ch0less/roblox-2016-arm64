@@ -793,7 +793,7 @@ RobloxView *RobloxView::init_game(void *wnd, void* appwnd, const bool isApp)
 
 // Native offline movement: WASD walks relative to camera, Space jumps.
 // Fallback when ControlScript is missing or not yet loaded. If Camera is CUSTOM
-// (Lua CameraScript), do not force FOLLOW — let Lua own the camera.
+// (Lua CameraScript), do not force FOLLOW, let Lua own the camera.
 static void offlinePlayStep(weak_ptr<DataModel> weakDm, const Heartbeat& /*hb*/)
 {
 	shared_ptr<DataModel> dm = weakDm.lock();
@@ -946,8 +946,10 @@ static void offlineEnsureWorldAssets(DataModel* dm)
 			spawn->setPartSizeXml(Vector3(6, 1, 6));
 			spawn->setAnchored(true);
 			spawn->setCanCollide(true);
+			// Classic-style spawn shield: a few seconds then gone (Duration prop).
+			spawn->forcefieldDuration = 5;
 			spawn->setParent(ws);
-			RC_PROBE("offlineAssets: added SpawnLocation\n");
+			RC_PROBE("offlineAssets: added SpawnLocation ffDuration=5\n");
 		}
 	}
 
@@ -988,7 +990,7 @@ static void offlineDefaultScriptsReady(weak_ptr<DataModel> weakDm, weak_ptr<Netw
 	RC_PROBE("offlineDefaultScriptsReady: starter control=%d camera=%d playerScriptsKids=%d\n", control, camera, psKids);
 }
 
-// Phase 3/4: Visit Solo offline — LocalPlayer, character, Run, default PlayerScripts.
+// Phase 3/4: Visit Solo offline, LocalPlayer, character, Run, default PlayerScripts.
 // Without NetworkClient/NetworkServer, both frontendProcessing and backendProcessing
 // are true (play-solo), so LoadCharacter is allowed on this process.
 static void startLocalPlay(shared_ptr<DataModel> dm)
@@ -1053,7 +1055,7 @@ static void startLocalPlay(shared_ptr<DataModel> dm)
 	}
 	RC_PROBE("startLocalPlay: localPlayer ok userId=%d name=%s\n", localPlayer->getUserID(), localPlayer->getName().c_str());
 
-	// Sky, spawn, content preload — all from local content/ + PlatformContent
+	// Sky, spawn, content preload, all from local content/ + PlatformContent
 	offlineEnsureWorldAssets(dm.get());
 
 	// Spawn classic R6 character (character3.rbxm from content/other)
@@ -1076,7 +1078,7 @@ static void startLocalPlay(shared_ptr<DataModel> dm)
 	RC_PROBE("startLocalPlay: character=%p kids=%d humanoid=%p sound=%d animate=%d healthScr=%d\n",
 		(void*)character, charKids, (void*)humanoid, hasSound, hasAnimate, hasHealthScr);
 
-	// Follow-camera attached to Humanoid (native Camera::step path — not CUSTOM/Lua).
+	// Follow-camera attached to Humanoid (native Camera::step path, not CUSTOM/Lua).
 	if (Workspace* ws = dm->getWorkspace())
 	{
 		// Play-mode mouse (not Studio tools)
@@ -1227,7 +1229,7 @@ bool RobloxView::loadPlaceFile(const std::string& absolutePath)
 	}
 
 	// ContentId::isFile requires "file://" + path. Absolute Unix paths start with '/'.
-	// IMPORTANT: do NOT LegacyLock on the main thread after RenderJob is running —
+	// IMPORTANT: do NOT LegacyLock on the main thread after RenderJob is running 
 	// it deadlocks waiting for the write slot. Schedule on the Write job instead.
 	const std::string contentUrl = "file://" + absolutePath;
 	dm->submitTask(boost::bind(&loadPlaceFileTask, dm, contentUrl), RBX::DataModelJob::Write);

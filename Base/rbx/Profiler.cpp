@@ -13,7 +13,7 @@ FASTFLAGVARIABLE(OnScreenProfiler, false)
 #define NOMINMAX
 
 #ifdef __APPLE__
-// Modern macOS has full C++11 support — use real std::atomic, std::mutex, std::thread.
+// Modern macOS has full C++11 support, use real std::atomic, std::mutex, std::thread.
 // The custom shims below were for pre-C++11 Apple compilers and are no longer needed.
 #include <atomic>
 #include <mutex>

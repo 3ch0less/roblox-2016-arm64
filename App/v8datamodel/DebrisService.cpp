@@ -52,11 +52,28 @@ void DebrisService::addItem(shared_ptr<Instance> item, double lifetime)
 		return;
 
 	// Make sure the current context has the security credentials high
-	// enough to act on the item.
-	item->securityCheck();
+	// enough to act on the item. Don't abort scheduling if the check
+	// fails offline / with a weak security context, otherwise spawn
+	// ForceFields (etc.) stick forever.
+	try
+	{
+		item->securityCheck();
+	}
+	catch (RBX::base_exception& e)
+	{
+		StandardOut::singleton()->print(MESSAGE_WARNING, e);
+	}
+
+	// Timer is normally set in onServiceProvider; re-resolve if missing
+	// (e.g. service created before parent, or timer cleared on reparent).
+	if (!timer)
+		timer = shared_from(ServiceProvider::create<TimerService>(this));
 
 	if (timer)
 		timer->delay(boost::bind(&::cleanup, weak_ptr<Instance>(item)), lifetime);
+	else
+		StandardOut::singleton()->printf(MESSAGE_WARNING,
+			"DebrisService::addItem: no TimerService; item will not auto-expire");
 
 	queue.push(item);
 	cleanup();

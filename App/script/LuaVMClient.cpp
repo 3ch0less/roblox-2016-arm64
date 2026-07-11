@@ -132,7 +132,7 @@ namespace LuaVM
 
     std::string getBytecodeCore(const std::string& name)
     {
-        // Empty — CoreScript::fetchSource loads from content/scripts when canCompileScripts().
+        // Empty, CoreScript::fetchSource loads from content/scripts when canCompileScripts().
         return "";
     }
 

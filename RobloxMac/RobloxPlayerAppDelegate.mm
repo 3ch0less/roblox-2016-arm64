@@ -505,7 +505,7 @@ RBX::HttpFuture loginAsync(const std::string& userName, const std::string& passW
         }
 
         [self addDbgInfoToBreakPad];
-        // Offline is a standalone play session — leaving / triple-Esc should exit the app
+        // Offline is a standalone play session, leaving / triple-Esc should exit the app
         quitOnLeave = YES;
         running = YES;
         [NSApp activateIgnoringOtherApps:YES];

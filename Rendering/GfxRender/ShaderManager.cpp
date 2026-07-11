@@ -166,7 +166,7 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
 
 	std::string packName = getPackName(language);
 	rc_probe_shader("loadShaders: folder=%s language=%s packName=%s\n", folder.c_str(), language.c_str(), packName.c_str());
-	// Empty/stub packs (ARM64 port: ShaderCompiler stub) — do not hard-fail init.
+	// Empty/stub packs (ARM64 port: ShaderCompiler stub) do not hard-fail init.
 	// Allows OpenGL window/first paint with missing GLSL bytecode; Phase 2 rebuilds real packs.
 	PackData shaderPack;
 	try
@@ -181,7 +181,7 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
 	}
 	if (shaderPack.data.size() < 8)
 	{
-		FASTLOG(FLog::Graphics, "Shader pack is empty/stub — skipping shader load (OpenGL window may still open)");
+		FASTLOG(FLog::Graphics, "Shader pack is empty/stub skipping shader load (OpenGL window may still open)");
 		rc_probe_shader("loadShaders: empty/stub pack size=%zu\n", shaderPack.data.size());
 		return;
 	}
@@ -190,7 +190,7 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
 		rc_probe_shader("loadShaders: pack size=%zu entries=%u\n", shaderPack.data.size(), count);
 		if (count == 0)
 		{
-			FASTLOG(FLog::Graphics, "Shader pack has 0 entries — skipping shader load");
+			FASTLOG(FLog::Graphics, "Shader pack has 0 entries skipping shader load");
 			return;
 		}
 	}

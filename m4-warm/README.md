@@ -51,11 +51,11 @@ All "raytracing" in this pack is screen-space (same technique used by SEUS PTGI,
 - **Denoise**: 5-tap bilateral cross filter weighted by depth + normal difference.
 - **Dithered**: per-pixel hash offset on march start breaks banding without needing a temporal history buffer.
 
-Hardware RT (Apple M4 supports it via Metal 3 `intersection_query`) is **not used** — Minecraft is voxel-based and Iris doesn't expose the voxel grid.
+Hardware RT (Apple M4 supports it via Metal 3 `intersection_query`) is **not used**, Minecraft is voxel-based and Iris doesn't expose the voxel grid.
 
 ## Tuning
 
-Most knobs are in `shaders/common/const.glsl`. The lang file is in `shaders/lang/en_US.lang` — the in-game settings panel maps directly to those options.
+Most knobs are in `shaders/common/const.glsl`. The lang file is in `shaders/lang/en_US.lang` the in-game settings panel maps directly to those options.
 
 ## Limitations
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-arm64.sh — Build RobloxPlayer.app for Apple Silicon (arm64, macOS 11+)
+# build-arm64.sh Build RobloxPlayer.app for Apple Silicon (arm64, macOS 11+)
 # Requires: Xcode.app installed (not just CommandLineTools)
 # Usage: bash build-arm64.sh [Release|Debug]
 

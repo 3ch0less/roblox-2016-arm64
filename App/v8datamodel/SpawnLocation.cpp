@@ -10,8 +10,26 @@
 #include "Humanoid/Humanoid.h"
 #include "V8DataModel/Workspace.h"
 #include "V8DataModel/DebrisService.h"
+#include "V8DataModel/TimerService.h"
 
 namespace RBX {
+
+namespace {
+// Destroy a debris-style instance after its lifetime (weak, safe if already gone).
+void expireSpawnForceField(weak_ptr<Instance> item)
+{
+	if (shared_ptr<Instance> i = item.lock())
+	{
+		try
+		{
+			i->destroy();
+		}
+		catch (RBX::base_exception&)
+		{
+		}
+	}
+}
+} // namespace
 
 const char* const  sSpawnLocation = "SpawnLocation";
 
@@ -248,16 +266,27 @@ void SpawnerService::SpawnPlayer(Workspace* workspace, shared_ptr<ModelInstance>
 	Vector3 dropPoint = location.translation;
 	dropPoint.y += 7; // hard-coded height of character (very bad) - use model:getExtents
 
-	if (forceFieldDuration > 0) 
+	// Classic Roblox: brief spawn shield (SpawnLocation.Duration, default 10).
+	// Offline / missing SpawnLocation used to pass 0. Use a short default when
+	// Duration was left alone so the shield still expires like real servers.
+	int ffSeconds = forceFieldDuration;
+	if (ffSeconds < 0)
+		ffSeconds = 0;
+
+	if (ffSeconds > 0) 
 	{
 		// conjure up a forcefield for this foo
 		shared_ptr<ForceField> f = Creatable<Instance>::create<ForceField>();
 		f->setParent(model.get());
 
-		// hook it into the debris service so it expires
-		DebrisService *ds = ServiceProvider::create<DebrisService>(workspace);
-		RBXASSERT(ds);
-		ds->addItem(f, forceFieldDuration);
+		// Primary: DebrisService (game.Debris:AddItem equivalent)
+		if (DebrisService *ds = ServiceProvider::create<DebrisService>(workspace))
+			ds->addItem(f, (double)ffSeconds);
+
+		// Also schedule via TimerService so the shield still drops if Debris
+		// missed the timer hook (offline / service order bugs).
+		if (TimerService* ts = ServiceProvider::create<TimerService>(workspace))
+			ts->delay(boost::bind(&expireSpawnForceField, weak_ptr<Instance>(f)), (double)ffSeconds);
 	}
 
 	workspace->moveToPoint(model.get(), dropPoint, DRAG::UNJOIN_NO_JOIN);

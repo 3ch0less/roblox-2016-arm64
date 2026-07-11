@@ -1822,7 +1822,8 @@ void Player::calculateNextSpawnLocation(const ServiceProvider *serviceProvider)
 		{	
 			location += worldExtents.bottomCenter();
 		}
-		forcefieldDuration = 0;
+		// Classic spawn protection when no SpawnLocation is in the place.
+		forcefieldDuration = 5;
 	}
 
 	// This calculates our exact spawn location, taking into account there may be a "tower" of parts where we spawn.
@@ -1873,7 +1874,8 @@ Player::SpawnData Player::calculateSpawnLocation(const std::string& preferedSpaw
 		{	
 			location += worldExtents.bottomCenter();
 		}
-		forcefieldDuration = 0;
+		// Classic spawn protection when no SpawnLocation is in the place.
+		forcefieldDuration = 5;
 	}
 
 	// This calculates our exact spawn location, taking into account there may be a "tower" of parts where we spawn.
