@@ -242,6 +242,8 @@ namespace FLog {
 
     unsigned short LOGAPI GetNumSynchronizedVariable();
 	void LOGAPI ResetSynchronizedVariablesState();
+	/** Offline/local: mark all SYNC flags as ready using current (default) values so Debug VALIDATE does not abort. */
+	void LOGAPI MarkSynchronizedVariablesReady();
 
     namespace Detail
     {

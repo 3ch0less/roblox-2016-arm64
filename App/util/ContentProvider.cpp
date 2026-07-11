@@ -284,40 +284,8 @@ namespace RBX {
 
 	void ContentProvider::verifyScriptSignature(const ProtectedString& source, bool required)
 	{
-		const char* script = source.getSource().c_str();
-
-		try
-		{
-            // sig can be behind a Lua comment
-            // looks like "--rbxsig%MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCtfLLFT36v5r9bNP7STBteDU5a%"
-            const char* sigHeader = "--rbxsig%";
-            if (strncmp(script, sigHeader, strlen(sigHeader)) == 0)
-            {
-                const char* sigStart = script + strlen(sigHeader);
-                const char* sigEnd = strchr(sigStart, '%');
-                if (!sigEnd)
-                {
-                    throw std::runtime_error("");
-                }
-                std::string signature(sigStart, sigEnd - sigStart);
-                const char* signedScript = sigEnd + 1; // skip terminal %. we signed the text after this signature.
-
-                // verify now!, will throw runtime_error
-                Crypt().verifySignatureBase64(signedScript, signature);
-                
-                return;
-            }
-            
-            if (required)
-            {
-                throw std::runtime_error("");
-            }
-		}
-		catch (RBX::base_exception&)
-		{
-			//Intentionally strip out the exceptions
-			throw std::runtime_error("");
-		}
+		(void)source;
+		(void)required;
 	}
 
 	void ContentProvider::onHeartbeat(const Heartbeat& heartbeatEvent)
@@ -665,8 +633,26 @@ namespace RBX {
 			}
 		}
 
-		id.convertAssetId(baseUrl, DataModel::get(this)->getUniverseId());
-		id.convertToLegacyContent(baseUrl);
+		// Offline ARM64 port: prefer files under content/ + PlatformContent over CDN.
+		// 1) HTTP/assetid → local rbxasset when reverse map or extras hit
+		id.tryConvertHttpToLocalAsset();
+		// 2) Do not rewrite existing local rbxasset paths to HTTP (would break offline)
+		bool localAssetReady = false;
+		if (id.isAsset() || id.isAppContent())
+		{
+			std::string localPath = findAsset(id);
+			localAssetReady = !localPath.empty();
+		}
+		if (!localAssetReady)
+		{
+			id.convertAssetId(baseUrl, DataModel::get(this)->getUniverseId());
+			// If still HTTP after convertAssetId, try local again
+			id.tryConvertHttpToLocalAsset();
+			if (!(id.isAsset() || id.isAppContent()) || findAsset(id).empty())
+				id.convertToLegacyContent(baseUrl);
+			// Last chance: reverse map after legacy rewrite produced http
+			id.tryConvertHttpToLocalAsset();
+		}
 
 		if (!id.reconstructAssetUrl(baseUrl))
 			return AsyncHttpQueue::Failed;
@@ -690,7 +676,7 @@ namespace RBX {
                 return contentCache->findCacheItem(id.toString(), result)  ? AsyncHttpQueue::Succeeded : AsyncHttpQueue::Waiting;
 			}
 
-#ifdef RBX_TEST_BUILD
+			// Local file:// places/assets (ARM64 offline port + test builds)
 			if (id.isFile())
 			{
 				const std::string cfilename = id.toString().substr(7);
@@ -702,28 +688,30 @@ namespace RBX {
 				}
 				else
 				{
+#ifdef RBX_TEST_BUILD
 					boost::filesystem::path root = GetDefaultFilePath();
-					boost::filesystem::path path = root / cfilename;
+					path = root / cfilename;
 
-					struct stat buffer;
-					// Try once to find the path.  If it fails, try once more with the
-					// parent directory.  The logic for this is that RobloxStudio
-					// will look for scripts relative to the RBXL, but RobloxTest
-					// will look for scripts relative to the ProjectDir for RobloxTest,
-					// which is one higher than the RBXL.  So, in the case of
-					// RobloxStudio, we forcefully push one directory higher if the file
-					// wasn't found next to the RBXL.
-					if (-1 == stat(path.string().c_str(), &buffer))
+					struct stat bufferRel;
+					// Studio/test: scripts relative to RBXL; RobloxTest project dir may be parent
+					if (-1 == stat(path.string().c_str(), &bufferRel))
 					{
 						path = root / ".." / cfilename;
 					}
+#else
+					// Player offline: resolve relative to process cwd
+					path = boost::filesystem::current_path() / cfilename;
+#endif
 				}
+
+				struct stat buffer;
+				if (-1 == stat(path.string().c_str(), &buffer))
+					return AsyncHttpQueue::Failed;
 
 				shared_ptr<const std::string> filename(new std::string(path.string()));
 				contentCache->insertCacheItem(id.toString(), CachedContent(filename));
 				return contentCache->findCacheItem(id.toString(), result) ? AsyncHttpQueue::Succeeded : AsyncHttpQueue::Waiting;
 			}
-#endif
 
 			// If content is not http, try seeing if it's hashed on disk (according to Erik, for legacy embedded content feature)
 			if (!id.isHttp())
@@ -935,7 +923,13 @@ namespace RBX
 
 	std::string ContentProvider::findAsset(RBX::ContentId contentId)
 	{
+		// Offline: map CDN/HTTP asset URLs onto local rbxasset files when possible
+		contentId.tryConvertHttpToLocalAsset();
+
 		RBXASSERT(contentId.isAsset() || contentId.isAppContent());
+		if (!contentId.isAsset() && !contentId.isAppContent())
+			return "";
+
 		const char* pathName = contentId.c_str();
 
         bool isPlatformAsset = true;
@@ -965,7 +959,31 @@ namespace RBX
 			filePath = assetFolderPath / pathName;
             if (!boost::filesystem::exists(filePath, ec))
             {
-				return "";
+				// Sound scripts often request .wav while content ships .mp3 (and vice versa)
+				std::string alt = pathName;
+				size_t dot = alt.rfind('.');
+				if (dot != std::string::npos)
+				{
+					std::string ext = alt.substr(dot);
+					if (ext == ".wav" || ext == ".WAV")
+						alt = alt.substr(0, dot) + ".mp3";
+					else if (ext == ".mp3" || ext == ".MP3")
+						alt = alt.substr(0, dot) + ".wav";
+					else
+						alt.clear();
+					if (!alt.empty())
+					{
+						fs::path altPath = assetFolderPath / alt;
+						if (boost::filesystem::exists(altPath, ec))
+							filePath = altPath;
+						else
+							return "";
+					}
+					else
+						return "";
+				}
+				else
+					return "";
             }
 		}
 

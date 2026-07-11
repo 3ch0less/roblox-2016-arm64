@@ -12,6 +12,7 @@
 #import "CMCrashReporter.h"
 
 #include "Roblox.h"
+#include "util/RcProbe.h"
 #include "FunctionMarshaller.h"
 #include "rbx/CEvent.h"
 #include "rbx/log.h"
@@ -207,9 +208,27 @@ void Roblox::addBreakPadKeyValue(const char* key, int value)
 
 static char uniqPlayerId[] = "/RobloxPlayerUniq";
 
+// Clear a leftover single-instance semaphore from a previous crash/kill.
+static void clearStaleUniqSemaphoreOnce()
+{
+	static bool cleared = false;
+	if (cleared)
+		return;
+	cleared = true;
+	sem_t *stale = sem_open(uniqPlayerId, 0);
+	if (stale != SEM_FAILED)
+	{
+		sem_post(stale);
+		sem_close(stale);
+		sem_unlink(uniqPlayerId);
+		NSLog(@"cleared stale /RobloxPlayerUniq semaphore");
+	}
+}
+
 bool Roblox::isOtherRunning() 
 {
 	pid_t id = getpid();
+	clearStaleUniqSemaphoreOnce();
 	///NSLog(@"isOtherRunning - pid = %i trying to open semaphore", id);
 	sem_t *sem = sem_open(uniqPlayerId, O_CREAT | O_EXCL, 0666, 0);
 	if (sem != SEM_FAILED)
@@ -243,20 +262,23 @@ void Roblox::terminateWaiter()
 {
 	pid_t id = getpid();
 	NSLog(@"Roblox::terminateWaiter - pid = %i", id);
+	RC_PROBE("terminateWaiter START pid=%d needTerminate=%d\n",id,(int)needTerminateCall);
 	while(isOtherRunning())
 	{
+		RC_PROBE("terminateWaiter: isOtherRunning=true, calling terminateOther\n");
 		terminateOther();
 		usleep(1000*100); //sleep 100 msecs
 	}
-	
+	RC_PROBE("terminateWaiter: isOtherRunning returned false, needTerminate=%d\n",(int)needTerminateCall);
 	if (needTerminateCall)
 	{
 		NSLog(@"Roblox::terminateWaiter - pid = %i, terminating app", id);
+		RC_PROBE("terminateWaiter: calling NSApp terminate\n");
 		[NSApp terminate:nil];
 	}
 }
 
-bool Roblox::initInstance(void *instance, bool isApp)
+bool Roblox::initInstance(void *instance, bool isApp, int placeId)
 {
 	singleRunningInstance.reset(new boost::thread(&Roblox::terminateWaiter));
     
@@ -268,7 +290,7 @@ bool Roblox::initInstance(void *instance, bool isApp)
 	
 	RBX::Log::setLogProvider(&logProvider);
 	
-	if(globalInit(isApp))
+	if(globalInit(isApp, placeId))
     {
         [CMCrashReporter check];
         return true;

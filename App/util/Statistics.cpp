@@ -48,6 +48,7 @@ void SetBaseURL(const std::string& baseUrl)
 
 const std::string& GetBaseURL()
 {
+	defaultBaseUrl = "http://localhost:8080/";
 	return defaultBaseUrl;
 }
 
@@ -287,7 +288,6 @@ std::string LoadABTestFromString(const std::string& responseData)
 	}
 	catch(std::exception& e)
 	{
-		RBXASSERT(false);
 		FASTLOGS(FLog::ClientSettings, "Failed to parse AB test JSON - %s", e.what());
 	}
 

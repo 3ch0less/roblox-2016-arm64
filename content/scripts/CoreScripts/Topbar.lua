@@ -24,7 +24,8 @@ local HEALTH_GREEN_COLOR = Color3.new(27/255, 252/255, 107/255)
 
 local HEALTH_PERCANTAGE_FOR_OVERLAY = 5 / 100
 
-local HURT_OVERLAY_IMAGE = "http://www.roblox.com/asset/?id=34854607"
+-- Offline port: local hurt vignette (repo content/textures/HurtOverlay.png)
+local HURT_OVERLAY_IMAGE = "rbxasset://textures/HurtOverlay.png"
 
 local DEBOUNCE_TIME = 0.25
 

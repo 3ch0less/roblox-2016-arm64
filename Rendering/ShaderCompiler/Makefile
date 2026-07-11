@@ -1,4 +1,11 @@
-CFLAGS=-I"hlsl2glslfork/hlslang/MachineIndependent" -I"hlsl2glslfork/hlslang/OSDependent/Mac" -I"glsl-optimizer/include" -I"glsl-optimizer/src" -I"glsl-optimizer/src/mesa" -I"glsl-optimizer/src/glsl" -I"glsl-optimizer/src/mapi" -I"../../ClientShared" -DNDEBUG -DMOJOSHADER_NO_VERSION_INCLUDE -O2 -c
+# ARM64 / modern Clang-friendly build for Mac (HLSL→GLSL pack compiler)
+INCLUDES=-Ihlsl2glslfork/hlslang/MachineIndependent -Ihlsl2glslfork/hlslang/OSDependent/Mac -Iglsl-optimizer/include -Iglsl-optimizer/src -Iglsl-optimizer/src/mesa -Iglsl-optimizer/src/glsl -Iglsl-optimizer/src/mapi -I../../ClientShared
+DEFS=-DNDEBUG -DMOJOSHADER_NO_VERSION_INCLUDE
+COMMONFLAGS=$(INCLUDES) $(DEFS) -O2 -fno-strict-aliasing -Wno-everything
+CFLAGS=$(COMMONFLAGS) -c
+CXXFLAGS=$(COMMONFLAGS) -std=c++11 -c
+CC=clang
+CXX=clang++
 
 SOURCES=
 SOURCES+=glsl-optimizer/src/glsl/ast_array_index.cpp
@@ -147,21 +154,27 @@ EXECUTABLE=ShaderCompiler
 all: $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)
-	gcc $(OBJECTS) -lstdc++ -o $@
+	$(CXX) $(OBJECTS) -o $@
 
-obj/%.o: %
+obj/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
-	gcc $(CFLAGS) $< -o $@
+	$(CXX) $(CXXFLAGS) $< -o $@
+
+obj/%.c.o: %.c
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< -o $@
 
 hlsl2glslfork/hlslang/MachineIndependent/Gen_hlslang.cpp: hlsl2glslfork/hlslang/MachineIndependent/hlslang.l hlsl2glslfork/hlslang/MachineIndependent/Gen_hlslang_tab.cpp
-	cd $(dir $@); flex hlslang.l
+	cd $(dir $@); flex -o Gen_hlslang.cpp hlslang.l
 
 hlsl2glslfork/hlslang/MachineIndependent/Gen_hlslang_tab.cpp: hlsl2glslfork/hlslang/MachineIndependent/hlslang.y
-	cd $(dir $@); bison -o Gen_hlslang_tab.cpp -d -t -v hlslang.y; mv Gen_hlslang_tab.hpp hlslang_tab.h
+	cd $(dir $@); bison -o Gen_hlslang_tab.cpp -d -t -v hlslang.y; mv Gen_hlslang_tab.hpp hlslang_tab.h || mv Gen_hlslang_tab.h hlslang_tab.h
 
 clean:
 	rm -rf obj
 	rm -f hlsl2glslfork/hlslang/MachineIndependent/Gen_hlslang.cpp
 	rm -f hlsl2glslfork/hlslang/MachineIndependent/Gen_hlslang_tab.cpp
+	rm -f hlsl2glslfork/hlslang/MachineIndependent/hlslang_tab.h
+	rm -f ShaderCompiler
 
 .PHONY: all clean

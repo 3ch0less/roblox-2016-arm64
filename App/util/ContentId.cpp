@@ -153,6 +153,77 @@ namespace RBX
 		}
 	}
 
+	bool ContentId::tryConvertHttpToLocalAsset()
+	{
+		// Extract numeric asset id from common URL shapes
+		std::string numericId;
+		if (isAssetId())
+		{
+			// rbxassetid://12345
+			numericId = id.substr(13);
+		}
+		else if (isHttp() || isRbxHttp())
+		{
+			// …/asset/?id=12345  or  …/Asset/?id=12345
+			std::string lower = boost::algorithm::to_lower_copy(id);
+			size_t pos = lower.find("id=");
+			if (pos == std::string::npos)
+				return false;
+			pos += 3;
+			while (pos < id.size() && (id[pos] == ' ' || id[pos] == '+'))
+				++pos;
+			size_t end = pos;
+			while (end < id.size() && isdigit(static_cast<unsigned char>(id[end])))
+				++end;
+			if (end == pos)
+				return false;
+			numericId = id.substr(pos, end - pos);
+		}
+		else
+			return false;
+
+		// Strip trailing junk after digits
+		while (!numericId.empty() && !isdigit(static_cast<unsigned char>(numericId.back())))
+			numericId.resize(numericId.size() - 1);
+		if (numericId.empty())
+			return false;
+
+		boost::call_once(initLegacyContentTable, legacyContentTableFlag);
+
+		// Known offline-only local substitutes (not always in LegacyContentTable)
+		static const struct { const char* id; const char* path; } kOfflineExtras[] = {
+			{ "34854607", "rbxasset://textures/HurtOverlay.png" }, // hurt vignette
+			{ "97078724", "rbxasset://textures/ui/Chat/Chat.png" },
+			{ "261878266", "rbxasset://textures/ui/CloseButton.png" },
+			{ "54135717", "rbxasset://textures/ui/CloseButton.png" },
+			{ "261880743", "rbxasset://textures/ui/Settings/Help/AButtonDark.png" },
+		};
+		for (size_t i = 0; i < sizeof(kOfflineExtras)/sizeof(kOfflineExtras[0]); ++i)
+		{
+			if (numericId == kOfflineExtras[i].id)
+			{
+				id = kOfflineExtras[i].path;
+				CorrectBackslash(id);
+				return true;
+			}
+		}
+
+		const std::string& path = legacyContentTable->FindPathByAssetId(numericId);
+		if (path.empty())
+			return false;
+
+		// path is already normalized lowercase rbxasset://…
+		id = path;
+		// Ensure rbxasset:// prefix if reverse map stored without it (shouldn't)
+		if (id.compare(0, 11, "rbxasset://") != 0 && id.compare(0, 10, "rbxasset:/") != 0)
+		{
+			if (id.find("rbxasset://") == std::string::npos)
+				id = std::string("rbxasset://") + id;
+		}
+		CorrectBackslash(id);
+		return true;
+	}
+
 	bool ContentId::reconstructUrl(const std::string& baseUrl, const char* const paths[], const int pathCount)
 	{
 		boost::scoped_array<char> url(new char[id.length()+1]);
@@ -169,7 +240,7 @@ namespace RBX
 		}
 		*urlIter = '\0';
         
-        if (DFFlag::UseNewUrlClass)
+        if (false)
         {
             const RBX::Url parsed = RBX::Url::fromString(url.get());
 
@@ -283,8 +354,8 @@ namespace RBX
                 if (DFFlag::UrlReconstructToAssetGame)
                 {
                     // Allow assets from prod to be used on test sites
-                    if (baseUrl.find(domain) != std::string::npos && host.find(domain) == std::string::npos)
-                        id = "http://www.roblox.com/" + path;
+					if (baseUrl.find(domain) != std::string::npos && host.find(domain) == std::string::npos)
+						id = "http://www.roblox.com/" + path;
                     else
                         id = baseUrl + (baseUrl[baseUrl.size()-1] != '/' ? "/" : "") + path;
 
@@ -306,11 +377,11 @@ namespace RBX
                 }
                 else
                 {
-                    size_t robloxLabsPos = host.find(domain);
-                    if (robloxLabsPos != std::string::npos)
-                        id = baseUrl + "/" + path;
-                    else
-                        id = "http://www.roblox.com/" + path;
+					size_t robloxLabsPos = host.find(domain);
+					if (robloxLabsPos != std::string::npos)
+						id = baseUrl + "/" + path;
+					else
+						id = baseUrl + (baseUrl[baseUrl.size()-1] != '/' ? "/" : "") + path;
                 }
 
                 return true;

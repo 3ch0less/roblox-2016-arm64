@@ -9,6 +9,7 @@
 
 
 #include "Roblox.h"
+#include "util/RcProbe.h"
 
 #undef max
 #undef min
@@ -72,7 +73,7 @@ extern "C" {
 
 
 
-static void do_preloadGame(bool isApp)
+static void do_preloadGame(bool isApp, int placeId)
 {
 	// Avoid having 2 DataModels open at once
 	// It should be safe, but may as well not play with fire
@@ -84,7 +85,9 @@ static void do_preloadGame(bool isApp)
 	if (!preloadedGame)
 	{
 		RBX::Time start = RBX::Time::now<RBX::Time::Fast>();
-		preloadedGame.reset(new RBX::SecurePlayerGame(NULL, ::GetBaseURL().c_str()));
+		// ARM64 offline port: LoadingScript paints a full-screen BlackFrame and never
+		// reliably dismisses without a 2016 join/replication path. Disable it.
+		preloadedGame.reset(new RBX::SecurePlayerGame(NULL, ::GetBaseURL().c_str(), false /* shouldShowLoadingScreen */));
 		RBX::Time stop = RBX::Time::now<RBX::Time::Fast>();
 		double secs = (stop - start).seconds();
 		RBX::StandardOut::singleton()->printf(RBX::MESSAGE_OUTPUT, "Preloaded Game %gsec", secs);
@@ -93,15 +96,15 @@ static void do_preloadGame(bool isApp)
 		RBX::StandardOut::singleton()->printf(RBX::MESSAGE_OUTPUT, "Already preloaded Game");
 }
 
-void Roblox::preloadGame(bool isApp)
+void Roblox::preloadGame(bool isApp, int placeId)
 {
 	RBX::StandardOut::singleton()->printf(RBX::MESSAGE_OUTPUT, "Requesting preload Game");
-	boost::thread(boost::bind(&do_preloadGame, isApp));
+	boost::thread(boost::bind(&do_preloadGame, isApp, placeId));
 }
 
 extern std::string macBundlePath();
 
-bool Roblox::globalInit(bool isApp)
+bool Roblox::globalInit(bool isApp, int placeId)
 {
 	if (initialized)
 	{
@@ -118,6 +121,9 @@ bool Roblox::globalInit(bool isApp)
 	}
 
     RBX::ContentProvider::setAssetFolder(assetFolder.c_str());
+	RBX::StandardOut::singleton()->printf(RBX::MESSAGE_OUTPUT,
+		"Asset folder: %s", assetFolder.c_str());
+	RC_PROBE("globalInit assetFolder=%s placeId=%d\n", assetFolder.c_str(), placeId);
 	
 	// Reset synchronized flags, they should be set by the server
 	FLog::ResetSynchronizedVariablesState();
@@ -161,8 +167,8 @@ bool Roblox::globalInit(bool isApp)
 
 	initialized = true;
 
-	preloadGame(isApp);
-    
+	preloadGame(isApp, placeId);
+
     return true;
 }
 
@@ -172,7 +178,8 @@ boost::shared_ptr<RBX::Game> Roblox::getpreloadedGame(const bool isApp)
 	if (!preloadedGame)
 	{
 		RBX::Time start = RBX::Time::now<RBX::Time::Fast>();
-		preloadedGame.reset(new RBX::SecurePlayerGame(NULL, ::GetBaseURL().c_str()));
+		// Same as do_preloadGame: no LoadingScript black overlay offline.
+		preloadedGame.reset(new RBX::SecurePlayerGame(NULL, ::GetBaseURL().c_str(), false /* shouldShowLoadingScreen */));
 		RBX::Time stop = RBX::Time::now<RBX::Time::Fast>();
 		double secs = (stop - start).seconds();
 		RBX::StandardOut::singleton()->printf(RBX::MESSAGE_OUTPUT, "Loaded Game %gsec", secs);

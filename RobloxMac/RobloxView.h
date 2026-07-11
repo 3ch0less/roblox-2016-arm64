@@ -54,8 +54,6 @@ class RobloxView
 
 	static boost::shared_ptr<RobloxView> rbxView;
 
-	static boost::shared_ptr<RBX::Game> startGame(std::string urlScript, const bool isApp);
-
 	void doTeleport(std::string url, std::string ticket, std::string script);
 	
 	void onPlaceIDChanged(const RBX::Reflection::PropertyDescriptor* desc);
@@ -65,6 +63,8 @@ class RobloxView
     void initializeInput();
     
 public:
+
+	static boost::shared_ptr<RBX::Game> startGame(std::string urlScript, const bool isApp);
 
 	// N.B.: These are clones of other Roblox defines, need to be here to get around Objective-C vs. Cpp issues.
 	// The values aren't literally duplicated, they are transduced by switch statements. So this is safe-- but annoying. --TP
@@ -132,6 +132,9 @@ public:
     
     void executeJoinScript(const std::string& urlScript, const bool isApp, const bool isFromProtocolHandler);
     void setUIMessage(const std::string& message);
+
+	/** Offline Phase 3: load a local .rbxl via file:// ContentId. Returns true on success. */
+	bool loadPlaceFile(const std::string& absolutePath);
 	
 	boost::shared_ptr<RBX::DataModel> getDataModel() { return game ? game->getDataModel() : boost::shared_ptr<RBX::DataModel>(); }
 private:

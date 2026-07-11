@@ -51,11 +51,8 @@ namespace RBX {
 	private:
 		typedef DescribedCreatable<StarterPlayerScripts, Instance, sStarterPlayerScripts, Reflection::ClassDescriptor::PERSISTENT> Super;
 
-		void InitializeDefaultScripts();
 		void InitializeDefaultScriptsRunService(RunTransition transition);
 		rbx::signals::scoped_connection initializeDefaultScriptsConnection;
-
-		rbx::signal<void()> defaultScriptsLoadedSignal;	
 
 		bool defaultScriptsLoadRequested;
 		bool defaultScriptsLoaded;
@@ -65,6 +62,11 @@ namespace RBX {
 		StarterPlayerScripts();
 		bool areDefaultScriptsLoaded() 	{ return defaultScriptsLoaded; } 
 		bool checkDefaultScriptsLoaded();
+
+		// Public for offline Visit Solo (no NetworkServer to drive remote confirm).
+		void InitializeDefaultScripts();
+		// Fired when both ControlScript and CameraScript are present under StarterPlayerScripts.
+		rbx::signal<void()> defaultScriptsLoadedSignal;
 
 		void requestDefaultScripts();
 		void requestDefaultScriptsServer(shared_ptr<Instance> player);

@@ -1035,7 +1035,6 @@ int compilePacks(int argc, char** argv)
     for (int i = 3; i < argc; ++i)
     {
         std::string target = argv[i];
-        ShaderCompilerD3D::ShaderProfile profileD3D = ShaderCompilerD3D::getD3DProfile(target);
 
         if (target == "glsl")
         {
@@ -1062,8 +1061,10 @@ int compilePacks(int argc, char** argv)
                 return 1;
         }
 #ifdef _WIN32
-        else if (profileD3D != ShaderCompilerD3D::shaderProfile_Count)
+        else if (ShaderCompilerD3D::getD3DProfile(target) != ShaderCompilerD3D::shaderProfile_Count)
         {
+            ShaderCompilerD3D::ShaderProfile profileD3D = ShaderCompilerD3D::getD3DProfile(target);
+
             // check x86 vs x64 compatibility
 #ifdef _WIN64
             if (!ShaderCompilerD3D::isX64Profile(profileD3D))

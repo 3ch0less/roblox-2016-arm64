@@ -1,5 +1,8 @@
 	PRODUCT_NAME = 	libLog;
 	INSTALL_PATH = ./;
+	// Modern clang turns INSTALL_PATH=./ into absolute /libLog.dylib; force a relocatable id.
+	DYLIB_INSTALL_NAME_BASE = @executable_path/../Frameworks;
+	LD_DYLIB_INSTALL_NAME = @executable_path/../Frameworks/libLog.dylib;
 	MACH_O_TYPE = mh_dylib;
 	DYLIB_COMPATIBILITY_VERSION = 1;
 	DYLIB_CURRENT_VERSION = 1;

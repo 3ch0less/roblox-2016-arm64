@@ -1,3 +1,6 @@
+# Local agent / session context (handoffs, phase reports, logs, screenshots)
+context/
+
 build/
 *.log
 DerivedData/
@@ -5,6 +8,9 @@ build-*.log
 .DS_Store
 *.o
 *.d
+.aider*
+
+# Rebuilt / platform-specific third-party blobs
 Contribs/SDL2.0.4/Xcode/SDL/SDL2.framework/Versions/A/SDL2
 Contribs/TBB/tbb_mac_30_056/lib/
 fmod/mac/*.dylib
@@ -20,4 +26,10 @@ Contribs/windows/
 *.lib
 *.dds
 *.qch
-.aider*
+
+# Local machine build products / binaries not needed in git
+Rendering/ShaderCompiler/ShaderCompiler
+Rendering/ShaderCompiler/hlsl2glslfork/hlslang/MachineIndependent/Gen_*
+*.pyc
+__pycache__/
+.venv/

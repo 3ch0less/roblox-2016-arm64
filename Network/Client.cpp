@@ -128,6 +128,8 @@ shared_ptr<Instance> Client::playerConnect(int userId, std::string server, int s
 
 	shared_ptr<Instance> player = players->createLocalPlayer(userId, TeleportService::getPreviousPlaceId() > 0);
 
+	return player;
+
 	if (clientPort == 0) {
 		clientPort = networkSettings->preferredClientPort;
 	}

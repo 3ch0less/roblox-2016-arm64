@@ -93,9 +93,15 @@ public:
         
         GLint swapInterval = 0;
         [context setValues:&swapInterval forParameter:NSOpenGLCPSwapInterval];
+
+        // Retina: drawable is in pixels. Without this + pixel-sized framebuffer dims,
+        // the game only paints the bottom-left quadrant of the window on HiDPI Macs.
+        if ([view respondsToSelector:@selector(setWantsBestResolutionOpenGLSurface:)])
+            [view setWantsBestResolutionOpenGLSurface:YES];
         
         [context setView:view];
         [context makeCurrentContext];
+        [context update];
         
         if (CGLError err = CGLEnable(static_cast<CGLContextObj>([context CGLContextObj]), kCGLCEMPEngine))
             FASTLOG1(FLog::Graphics, "Error enabling MP engine: %x", err);
@@ -133,12 +139,21 @@ public:
 
     virtual bool isMainFramebufferRetina()
     {
-        return false;
+        // High-DPI: backing scale > 1 (typical Retina = 2). Used so UI/canvas stays in points.
+        NSWindow* window = [view window];
+        CGFloat scale = window ? [window backingScaleFactor] : [[NSScreen mainScreen] backingScaleFactor];
+        return scale > 1.01;
     }
 
     virtual std::pair<unsigned int, unsigned int> updateMainFramebuffer(unsigned int width, unsigned int height)
     {
-        NSRect b = [view bounds];
+        // Convert view bounds (points) → backing pixels so glViewport matches the drawable.
+        NSRect points = [view bounds];
+        NSRect pixels = [view convertRectToBacking:points];
+        unsigned int pw = (unsigned int)lround(pixels.size.width);
+        unsigned int ph = (unsigned int)lround(pixels.size.height);
+        if (pw == 0) pw = (unsigned int)lround(points.size.width);
+        if (ph == 0) ph = (unsigned int)lround(points.size.height);
         
         if (FFlag::UpdateContextOnFollowingFrame && updateRequired)
         {
@@ -146,14 +161,14 @@ public:
             updateRequired = false;
         }
 
-        if (width != b.size.width || height != b.size.height)
+        if (width != pw || height != ph)
         {
             if (!FFlag::UpdateContextOnFollowingFrame)
                 [context update];
             updateRequired = true;
         }
         
-        return std::make_pair(b.size.width, b.size.height);
+        return std::make_pair(pw, ph);
     }
 
 private:

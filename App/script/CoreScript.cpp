@@ -72,7 +72,7 @@ namespace RBX
         }
         else
         {
-            throw RBX::runtime_error("Error loading core script %s", getName().c_str());
+            return Code(boost::flyweight<ProtectedString>(ProtectedString()));
         }
     }
 

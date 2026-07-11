@@ -44,6 +44,10 @@ namespace RBX {
 		}
 		
 		void convertToLegacyContent(const std::string& baseUrl);
+		// Offline port: rewrite http(s)://…/asset/?id=N (or rbxassetid://N) to
+		// rbxasset://… when LegacyContentTable / known local mappings have the file.
+		// Returns true if id was rewritten.
+		bool tryConvertHttpToLocalAsset();
 		void convertAssetId(const std::string& baseUrl, int universeId);
 		bool reconstructUrl(const std::string& baseUrl, const char* const paths[], const int pathCount);
 		bool reconstructAssetUrl(const std::string& baseUrl);

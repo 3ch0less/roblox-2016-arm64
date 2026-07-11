@@ -160,6 +160,27 @@ void SoundService::openFmod()
 
             FMOD::System *sys = NULL;
             checkResult(FMOD::System_Create(&sys), "System_Create", this, NULL);		// Create the main system object.
+
+            // ARM64 port: fmod/mac/libfmod.dylib arm64 slice is a no-op stub (every export
+            // returns FMOD_OK without writing *system). x86_64 slice is real FMOD 1.7.
+            // Until a real arm64 FMOD dylib is supplied, sound stays disabled gracefully.
+            if (sys == NULL)
+            {
+                FASTLOG(FLog::Warning, "FMOD System_Create returned null; sound disabled (arm64 stub dylib?)");
+                StandardOut::singleton()->print(MESSAGE_WARNING,
+                    "FMOD System_Create returned null; sound disabled (replace fmod/mac/libfmod.dylib arm64 with real FMOD 1.07+)");
+                if (const char* e = getenv("RC_PROBE"))
+                {
+                    if (e[0] && e[0] != '0')
+                    {
+                        FILE* _p = fopen("/tmp/rc_probe.log", "a");
+                        if (_p) { fprintf(_p, "FMOD: System_Create OK but sys=null (arm64 stub)\n"); fclose(_p); }
+                    }
+                }
+                initialized = false;
+                return;
+            }
+
             system.reset(sys, FMODSystemRelease());
 
             unsigned int version;

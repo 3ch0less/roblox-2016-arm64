@@ -755,6 +755,9 @@ namespace RBX
 		normalizeUrl(url);
 		
 		mMap[url] = contentId;
+		// Reverse map for offline HTTP→local (numeric ids only)
+		if (!contentId.empty() && isdigit(static_cast<unsigned char>(contentId[0])))
+			mIdToPath[contentId] = url;
 	}
 	
 	void LegacyContentTable::AddEntryProd(const std::string& path, const std::string& contentId)
@@ -763,6 +766,8 @@ namespace RBX
 		normalizeUrl(url);
 		
 		mMap[url] = format("localhost/Asset/?id=%s", contentId.c_str());
+		if (!contentId.empty() && isdigit(static_cast<unsigned char>(contentId[0])))
+			mIdToPath[contentId] = url;
 	}
 	
 	const std::string& LegacyContentTable::FindEntry(const std::string& path)
@@ -773,5 +778,11 @@ namespace RBX
 		UrlMap::const_iterator it = mMap.find(url);
 		
 		return (it == mMap.end()) ? mEmpty : it->second;
+	}
+
+	const std::string& LegacyContentTable::FindPathByAssetId(const std::string& numericId)
+	{
+		UrlMap::const_iterator it = mIdToPath.find(numericId);
+		return (it == mIdToPath.end()) ? mEmpty : it->second;
 	}
 }

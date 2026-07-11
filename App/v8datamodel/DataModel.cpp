@@ -691,11 +691,11 @@ void DataModel::doDataModelSetup(shared_ptr<DataModel> dataModel, bool startHear
 	FASTLOG1(FLog::CloseDataModel, "DataModel created: %p", dataModel.get());
 }
     
-shared_ptr<DataModel> DataModel::createDataModel(bool startHeartbeat, RBX::Verb* lockVerb, bool shouldShowLoadingScreen)
+shared_ptr<DataModel> DataModel::createDataModel(bool startHeartbeat, RBX::Verb* lockVerb, bool shouldShowLoadingScreen, int placeId)
 {
 	FASTLOG1(FLog::CloseDataModel, "Create DataModel - heartbeat(%d)", startHeartbeat);
 		
-	shared_ptr<DataModel> dataModel = Creatable<Instance>::create<RBX::DataModel>(lockVerb);
+	shared_ptr<DataModel> dataModel = Creatable<Instance>::create<RBX::DataModel>(lockVerb, placeId);
 	
 	doDataModelSetup(dataModel, startHeartbeat, shouldShowLoadingScreen);
     return dataModel;
@@ -863,7 +863,7 @@ void DataModel::onCloseCallbackChanged(const CloseCallback& oldValue)
 //                 that constructs DataModel, and creates essential services.
 //                 All these verbs should be taken out and put into a UI library (which isn't needed by
 //                 by the WebService, for example.
-DataModel::DataModel(RBX::Verb* lockVerb) 
+DataModel::DataModel(RBX::Verb* lockVerb, int placeId) 
 	:Super("Game"),
 	VerbContainer(NULL),
 	shutdownRequestedCount(0),
@@ -879,7 +879,7 @@ DataModel::DataModel(RBX::Verb* lockVerb)
 	isStudioRunMode(false),
 	checkedExperimentalFeatures(false),
 	drawId(0),
-	placeID(0),
+	placeID(placeId),
 	gameInstanceID(""),
 	placeVersion(0),
 	creatorID(0),
@@ -892,16 +892,12 @@ DataModel::DataModel(RBX::Verb* lockVerb)
 	numInstances(0),
 	mouseOverGui(false),
 	networkMetric(NULL),
-#pragma warning(push)
-#pragma warning(disable: 4355) // 'this' : used in base member initializer list
-	workspace(Creatable<Instance>::create<Workspace>(this)),
 	guiRoot(Creatable<Instance>::create<GuiRoot>()),
 	forceArrowCursor(true),
 	isGameLoaded(false),
 	areCoreScriptsLoaded(false),
 	game(NULL),
     networkStatsWindowsOn(false),
-#pragma warning(pop)
 	dataModelInitTime(Time::nowFast()),
 	savePlaceThrottle(&DFInt::SavePlacePerMinute),
 	vipServerId(""),
@@ -911,6 +907,9 @@ DataModel::DataModel(RBX::Verb* lockVerb)
 	universeDataRequested(false),
     forceR15(false)
 {
+	write_requested = 1;
+	create<ContentProvider>()->setBaseUrl(::GetBaseURL());
+	workspace = Creatable<Instance>::create<Workspace>(this);
 	if (TaskScheduler::singleton().isCyclicExecutive())
 	{
 		TaskScheduler::singleton().DataModel30fpsThrottle = DataModel::throttleAt30Fps;
@@ -921,6 +920,7 @@ DataModel::DataModel(RBX::Verb* lockVerb)
 	lockParent();
 
 	guiBuilder.Initialize(this);
+	write_requested = 0;
 }
 		
 bool DataModel::getRemoteBuildMode()
@@ -1479,6 +1479,19 @@ void DataModel::loadGame(int assetID)
 
 void DataModel::loadContent(ContentId contentId)
 {
+	if (const char* e = getenv("RC_PROBE"))
+	{
+		if (e[0] && e[0] != '0')
+		{
+			FILE* _rcf=fopen("/tmp/rc_probe.log","a");
+			if (_rcf)
+			{
+				fprintf(_rcf,"loadContent ENTERED placeID=%d isInit=%d isContentLoaded=%d contentId=%s\n",
+					getPlaceID(), (int)isInitialized, (int)isContentLoaded, contentId.c_str());
+				fclose(_rcf);
+			}
+		}
+	}
 	RBXASSERT(isInitialized);    //  Show to David or Erik - threading issue
 
 	if (isContentLoaded)

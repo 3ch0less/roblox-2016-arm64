@@ -1,4 +1,5 @@
 #include "Util/Rect.h"
+#include "util/RcProbe.h"
 #include "Util/NavKeys.h"
 #include "Util/Standardout.h"
 #include "Util/NavKeys.h"
@@ -14,6 +15,7 @@
 #include "RobloxView.h"
 #include "V8DataModel/SleepingJob.h"
 #include "V8DataModel/DataModelJob.h"
+#include <cstdio>
 
 #define DXINPUT_TRACE  __noop
 
@@ -153,6 +155,26 @@ void UserInput::ProcessUserInputMessage(RBX::InputObject::UserInputType eventTyp
         {
             if (wParam == RBX::SDLK_F8 && lParam == RBX::KMOD_NONE)
 				MacWriteFastLogDump();
+
+			// Offline/play: press Escape 3 times quickly to quit the client
+			if (eventState == RBX::InputObject::INPUT_STATE_BEGIN && wParam == RBX::SDLK_ESCAPE)
+			{
+				static int s_escQuitCount = 0;
+				static double s_escQuitLastSec = 0.0;
+				const double nowSec = G3D::System::time();
+				if (nowSec - s_escQuitLastSec > 2.0)
+					s_escQuitCount = 0;
+				s_escQuitLastSec = nowSec;
+				s_escQuitCount++;
+				RC_PROBE("escQuit: press %d/3\n", s_escQuitCount);
+				if (s_escQuitCount >= 3)
+				{
+					s_escQuitCount = 0;
+					RC_PROBE("escQuit: triple Esc → leaveGame\n");
+					if (wnd)
+						wnd->leaveGame();
+				}
+			}
             
             const RBX::ModCode modCode = (RBX::ModCode) lParam;
             const bool keyDown = (eventState == RBX::InputObject::INPUT_STATE_BEGIN);

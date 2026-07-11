@@ -50,8 +50,8 @@ private :
 	static void terminateOther();
 public :
     
-    static bool globalInit(bool isApp);
-	static bool initInstance(void *instance, bool isApp);
+    static bool globalInit(bool isApp, int placeId = 0);
+	static bool initInstance(void *instance, bool isApp, int placeId = 0);
 	static void shutdownInstance();
 	static void releaseTerminateWaiter();
 	
@@ -73,7 +73,7 @@ public :
 	
 	static RunMode getRunMode() { return runMode; }
 	
-	static void preloadGame(bool isApp);
+	static void preloadGame(bool isApp, int placeId = 0);
 	
 	static boost::shared_ptr<RBX::Game> getpreloadedGame(const bool isApp);
 	static void relinquishGame(boost::shared_ptr<RBX::Game>& game);

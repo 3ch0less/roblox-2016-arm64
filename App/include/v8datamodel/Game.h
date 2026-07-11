@@ -19,7 +19,7 @@ namespace RBX {
 	class Game : boost::noncopyable
 	{
 	protected:
-		Game(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen = false);
+		Game(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen = false, int placeId = 0);
 
 		bool hasShutdown;
 
@@ -53,7 +53,7 @@ namespace RBX {
 	class SecurePlayerGame : public Game
 	{
 	public:
-		SecurePlayerGame(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen = true);
+		SecurePlayerGame(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen = true, int placeId = 0);
 	};
 
 	class UnsecuredStudioGame : public Game

@@ -670,6 +670,19 @@ namespace FLog
 		}
 	}
 
+	void MarkSynchronizedVariablesReady()
+	{
+		if (!gVariables)
+			return;
+		for (Variables::iterator iter = gVariables->begin(); iter != gVariables->end(); iter++)
+		{
+			if ((iter->second->getType() & FASTVARTYPE_SYNC) > 0)
+			{
+				iter->second->setIsSync(true);
+			}
+		}
+	}
+
 	int GetFastLogCounter(Channel channel)
 	{
 		if (channel > LOGCHANNELS)

@@ -33,6 +33,7 @@
 #include "script/LuaVM.h"
 
 #include "v8xml/WebParser.h"
+#include "FastLog.h"
 
 #include "util/RobloxGoogleAnalytics.h"
 #include "rbx/SystemUtil.h"
@@ -114,6 +115,7 @@ RBX::Analytics::InfluxDb::Points analyticsPoints;
 // Application delegate methods
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
 {
+	if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"applicationShouldTerminate running=%d\n",(int)running);fclose(_pf);} }
 	if( running && [self requestShutdownClient:ROBLOX_APP_SHUTDOWN_CODE_QUIT] )
 		// push terminat¡on until later
 		return NSTerminateLater;
@@ -204,11 +206,12 @@ RBX::Analytics::InfluxDb::Points analyticsPoints;
 
 -(BOOL) applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)theApplication
 {
-    return YES;
+    return NO;
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification
 {
+	if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"applicationWillTerminate\n");fclose(_pf);} }
 	[self leaveGame];
 	Roblox::shutdownInstance();
 }
@@ -295,9 +298,11 @@ RBX::HttpFuture loginAsync(const std::string& userName, const std::string& passW
 	NSArray* args = [[NSProcessInfo processInfo] arguments];
 	Boolean showTestMenu = NO;
 	Boolean disableInternetPlugins = NO;
+	Boolean offlineMode = NO;
 	int testPlaceID = 0;
     NSString* userName = @"";
     NSString* passWord = @"";
+	NSString* rbxlPath = nil; // offline local place: --rbxl /path/to/file.rbxl
 	quitOnLeave = NO;
     gameType = GAMETYPE_PLAY;
 
@@ -310,6 +315,22 @@ RBX::HttpFuture loginAsync(const std::string& userName, const std::string& passW
 
         if ([arg isEqualToString:@"-t"] || [arg isEqualToString:@"--test"]) {
             showTestMenu = YES;
+        }
+
+        // Offline boot: show window + engine without join args / dead labs host
+        if ([arg isEqualToString:@"--offline"]) {
+            offlineMode = YES;
+            showTestMenu = YES;
+        }
+
+        // Local place file for offline play (Phase 3). Implies --offline.
+        if ([arg isEqualToString:@"--rbxl"] || [arg isEqualToString:@"--placefile"]) {
+            i++;
+            if (i < [args count]) {
+                rbxlPath = [args objectAtIndex:i];
+                offlineMode = YES;
+                showTestMenu = YES;
+            }
         }
 
         if ([arg isEqualToString:@"-plugin"]) {
@@ -388,7 +409,7 @@ RBX::HttpFuture loginAsync(const std::string& userName, const std::string& passW
 
     if(!(ticket && authURL && scriptURL))
     {
-        if (testPlaceID == 0)
+        if (testPlaceID == 0 && !offlineMode)
         {
             NSString *urlString = [NSString stringWithFormat: @"%@games.aspx", baseUrl];
             [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:urlString]];
@@ -397,7 +418,13 @@ RBX::HttpFuture loginAsync(const std::string& userName, const std::string& passW
     }
 
 
-	if( !Roblox::initInstance(self, false))
+	int desiredPlaceId = 0;
+	if (scriptURL) {
+		std::string _plUrl([scriptURL UTF8String]);
+		const char* _p = strstr(_plUrl.c_str(), "placeId=");
+		if (_p) desiredPlaceId = atoi(_p + 8);
+	}
+	if( !Roblox::initInstance(self, false, desiredPlaceId))
     {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert addButtonWithTitle:@"OK"];
@@ -410,6 +437,80 @@ RBX::HttpFuture loginAsync(const std::string& userName, const std::string& passW
             [NSApp terminate:nil];
             return;
         }
+    }
+
+    // Offline / test boot: open the game window without a join script (no network required).
+    if (offlineMode && !(ticket && authURL && scriptURL) && testPlaceID == 0)
+    {
+        // No server client-settings: treat SYNC FastFlags as ready at defaults (avoids Debug abort).
+        FLog::MarkSynchronizedVariablesReady();
+        // Force 2016-era CoreGui chrome offline (no clientSettings from labs).
+        FLog::SetValue("UseInGameTopBar", "true");
+        FLog::SetValue("LuaBasedBubbleChat", "true");
+        if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"offlineMode: init_game + window (sync flags ready, 2016 UI flags on)\n");fclose(_pf);} }
+        [mainView setHidden: NO];
+        [self.window makeKeyAndOrderFront:self];
+        try
+        {
+            self->robloxView = RobloxView::init_game((void *) ogreView, (void *) self, false);
+        }
+        catch (RBX::base_exception& e)
+        {
+            if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"offlineMode init_game EXCEPTION: %s\n", e.what());fclose(_pf);} }
+            [RobloxPlayerAppDelegate reportRenderViewInitError:e.what()];
+        }
+        [ogreView setRobloxView:self->robloxView];
+        [ogreView setAppDelegate:self];
+        [self.window makeFirstResponder:ogreView];
+        if (self->robloxView)
+            [self setupGameServices];
+
+        // Phase 3: optional local place after view/DataModel exist
+        if (self->robloxView && rbxlPath && [rbxlPath length] > 0)
+        {
+            NSString* resolved = [[rbxlPath stringByExpandingTildeInPath] stringByStandardizingPath];
+            if (![resolved hasPrefix:@"/"] || ![[NSFileManager defaultManager] fileExistsAtPath:resolved])
+            {
+                // Relative: try cwd, then walk up from app bundle for filename
+                NSString* cwdTry = [[[NSFileManager defaultManager] currentDirectoryPath]
+                    stringByAppendingPathComponent:rbxlPath];
+                if ([[NSFileManager defaultManager] fileExistsAtPath:cwdTry])
+                    resolved = [cwdTry stringByStandardizingPath];
+                else
+                {
+                    NSString* leaf = [rbxlPath lastPathComponent];
+                    NSString* start = [[NSBundle mainBundle] bundlePath];
+                    for (int up = 0; up < 8; up++)
+                    {
+                        NSString* tryPath = [[start stringByAppendingPathComponent:leaf] stringByStandardizingPath];
+                        if ([[NSFileManager defaultManager] fileExistsAtPath:tryPath])
+                        {
+                            resolved = tryPath;
+                            break;
+                        }
+                        start = [start stringByDeletingLastPathComponent];
+                    }
+                }
+            }
+            if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"offlineMode: loading rbxl path=%s\n", [resolved UTF8String]);fclose(_pf);} }
+            if ([[NSFileManager defaultManager] fileExistsAtPath:resolved])
+            {
+                bool ok = self->robloxView->loadPlaceFile([resolved UTF8String]);
+                if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"offlineMode: loadPlaceFile returned %d\n",(int)ok);fclose(_pf);} }
+            }
+            else
+            {
+                if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"offlineMode: rbxl NOT FOUND path=%s (arg=%s)\n", [resolved UTF8String], [rbxlPath UTF8String]);fclose(_pf);} }
+            }
+        }
+
+        [self addDbgInfoToBreakPad];
+        // Offline is a standalone play session — leaving / triple-Esc should exit the app
+        quitOnLeave = YES;
+        running = YES;
+        [NSApp activateIgnoringOtherApps:YES];
+        if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"offlineMode: running=%d robloxView=%p quitOnLeave=1\n",(int)running,(void*)self->robloxView);fclose(_pf);} }
+        return;
     }
 
     if (DFFlag::MacInferredCrashReporting)
@@ -602,6 +703,7 @@ static BreakpadRef InitBreakpad(void) { return nullptr; }
 
 - (void)handleLeaveGame
 {
+	if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"handleLeaveGame quitOnLeave=%d running=%d\n",(int)quitOnLeave,(int)running);fclose(_pf);} }
 	if(quitOnLeave)
 		[NSApp terminate:nil];
 
@@ -743,15 +845,17 @@ static BreakpadRef InitBreakpad(void) { return nullptr; }
 		{
 		}
 
+        if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"calling start_game (with render view)\n");fclose(_pf);} }
         try
         {
             self->robloxView = RobloxView::start_game( (void *) ogreView, (void *) self, std::string(scriptBuf), false);
+            if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"start_game OK robloxView=%p\n",(void*)self->robloxView);fclose(_pf);} }
         }
         catch (RBX::base_exception& e)
         {
+            if (const char* _rcp=getenv("RC_PROBE")) if (_rcp[0] && _rcp[0]!='0') { FILE* _pf=fopen("/tmp/rc_probe.log","a"); if(_pf){fprintf(_pf,"start_game EXCEPTION: %s\n", e.what());fclose(_pf);} }
             [RobloxPlayerAppDelegate reportRenderViewInitError:e.what()];
         }
-
 
         [self addDbgInfoToBreakPad];
 
@@ -760,7 +864,8 @@ static BreakpadRef InitBreakpad(void) { return nullptr; }
 
 		[self.window makeFirstResponder:ogreView];
 
-        [self setupGameServices];
+        if (self->robloxView)
+            [self setupGameServices];
 
 		running = YES;
 	}

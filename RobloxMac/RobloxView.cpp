@@ -1,5 +1,6 @@
 #include "RobloxView.h"
 #include "Roblox.h"
+#include <cstdio>
 
 #include "GfxBase/ViewBase.h"
 #include "v8datamodel/datamodel.h"
@@ -23,12 +24,43 @@
 #include "v8datamodel/UserInputService.h"
 #include "Util/Statistics.h"
 #include "v8datamodel/ContentProvider.h"
+#include "util/ContentId.h"
+#include "security/SecurityContext.h"
 #include "script/ScriptContext.h"
 #include "v8xml/Serializer.h"
 #include "rbx/CEvent.h"
 #include "GameVerbs.h"
 #include "Network/Players.h"
+#include "Network/Player.h"
+#include "Util/RunStateOwner.h"
+#include "Util/NavKeys.h"
+#include "Util/UserInputBase.h"
+#include "v8datamodel/Camera.h"
+#include "v8datamodel/ModelInstance.h"
+#include "v8datamodel/StarterPlayerService.h"
+#include "v8datamodel/PlayerScripts.h"
+#include "v8datamodel/UserController.h"
+#include "v8datamodel/ReplicatedFirst.h"
+#include "v8datamodel/PlayerGui.h"
+#include "v8datamodel/GuiObject.h"
+#include "v8datamodel/ScreenGui.h"
+#include "v8datamodel/Lighting.h"
+#include "v8datamodel/Sky.h"
+#include "v8datamodel/SpawnLocation.h"
+#include "v8datamodel/PartInstance.h"
+#include "v8datamodel/Decal.h"
+#include "Humanoid/Humanoid.h"
+#include "util/RcProbe.h"
+#include "util/ContentId.h"
+#include "util/TextureId.h"
+#include "script/CoreScript.h"
+#include "script/LuaVM.h"
 #include "../ClientBase/RenderSettingsItem.h"
+
+// Offline Visit Solo: keep WASD→Humanoid + follow-cam alive for the process lifetime.
+// Native path is the Phase 3 fallback; Lua ControlScript/CameraScript may take over.
+static rbx::signals::scoped_connection g_offlinePlayStepConnection;
+static rbx::signals::scoped_connection g_offlineScriptsLoadedConnection;
 
 
 #include <boost/iostreams/copy.hpp>
@@ -373,9 +405,10 @@ extern std::string macBundlePath();
 
 static RBX::ViewBase* createGameWindow(void *wnd)
 {
-	// static initialization:
+	RC_PROBE("createGameWindow: InitPluginModules...\n");
 	static boost::once_flag flag = BOOST_ONCE_INIT;
 	boost::call_once(&RBX::ViewBase::InitPluginModules, flag);
+	RC_PROBE("createGameWindow: CreateView...\n");
 
 	RBX::OSContext context;
     context.hWnd = wnd;
@@ -385,7 +418,9 @@ static RBX::ViewBase* createGameWindow(void *wnd)
 	RBX::CRenderSettings& settings = CRenderSettingsItem::singleton();
 	RBX::CRenderSettings::GraphicsMode mode = RBX::CRenderSettings::OpenGL;
 	RBX::ViewBase* rbxView =  RBX::ViewBase::CreateView(mode, &context, &settings);
-	rbxView->initResources();
+	RC_PROBE("createGameWindow: initResources rbxView=%p...\n",(void*)rbxView);
+	if (rbxView) rbxView->initResources();
+	RC_PROBE("createGameWindow: done\n");
 
 	return rbxView;
 }
@@ -638,63 +673,102 @@ void RobloxView::setBounds(unsigned int width, unsigned int height)
 
 static void executeScript(boost::shared_ptr<RBX::Game> game, std::string urlScript, bool isApp, bool isFromProtocolHandler)
 {
+	RC_PROBE("executeScript ENTER url=%s\n",urlScript.c_str());
 	RBX::Security::Impersonator impersonate(RBX::Security::COM);
-	
+
 	std::ostringstream data;
 	if (RBX::ContentProvider::isUrl(urlScript))
 	{
-		RBX::DataModel::LegacyLock lock(game->getDataModel(), RBX::DataModelJob::Write);
-		std::auto_ptr<std::istream> stream(RBX::ServiceProvider::create<RBX::ContentProvider>(game->getDataModel().get())->getContent(RBX::ContentId(urlScript.c_str())));
-		boost::iostreams::copy(*stream, data);
+		try
+		{
+			RBX::DataModel::LegacyLock lock(game->getDataModel(), RBX::DataModelJob::Write);
+			std::auto_ptr<std::istream> stream(RBX::ServiceProvider::create<RBX::ContentProvider>(game->getDataModel().get())->getContent(RBX::ContentId(urlScript.c_str())));
+			boost::iostreams::copy(*stream, data);
+			RC_PROBE("executeScript getContent OK bytes=%d\n",(int)data.str().size());
+		}
+		catch (const std::exception& _e)
+		{
+			RC_PROBE("executeScript getContent EXCEPTION: %s\n",_e.what());
+			return;
+		}
 	}
 	else
+	{
+		RC_PROBE("executeScript: not a URL, returning\n");
 		return;	// silent failure is harder to hack :)
-	
+	}
+
     RBX::ProtectedString verifiedSource;
 
 	try
     {
         verifiedSource = ProtectedString::fromTrustedSource(data.str());
         ContentProvider::verifyScriptSignature(verifiedSource, true);
+        RC_PROBE("executeScript verifySignature OK\n");
 	}
 	catch(std::bad_alloc&)
 	{
 		throw;
 	}
-	catch(std::exception&)
+	catch(std::exception& _e)
 	{
+		RC_PROBE("executeScript verifySignature EXCEPTION: %s\n",_e.what());
 		return;
 	}
-	
+
 	shared_ptr<RBX::DataModel> dm = game->getDataModel();
-    
+
     if(!dm)
+	{
+		RC_PROBE("executeScript: dm is null\n");
         return;
-    
+	}
+
 	RBX::DataModel::LegacyLock lock(dm, RBX::DataModelJob::Write);
-	
+
 	if (dm->isClosed())
+	{
+		RC_PROBE("executeScript: dm isClosed\n");
 		return;
-	
+	}
+
+	RC_PROBE("executeScript: checking join.ashx find=%lu\n",(unsigned long)urlScript.find("join.ashx"));
     if (urlScript.find("join.ashx"))
     {
-        std::string data = verifiedSource.getSource();
-        int firstNewLineIndex = data.find("\r\n");
-        if (data[firstNewLineIndex+2] == '{')
+        std::string jdata = verifiedSource.getSource();
+        size_t firstNewLineIndex = jdata.find("\r\n");
+        RC_PROBE("executeScript: firstNL=%lu jdata[NL+2]=%c\n",(unsigned long)firstNewLineIndex,(firstNewLineIndex+2 < jdata.size() ? jdata[firstNewLineIndex+2] : '?'));
+        if (firstNewLineIndex != std::string::npos && firstNewLineIndex+2 < jdata.size() && jdata[firstNewLineIndex+2] == '{')
         {
-            // TODO: create shared enum between PC and Mac
-            // Values taken from SharedLauncher::LaunchMode
             int launchMode = 0;
             if (isFromProtocolHandler)
                 launchMode = 1;
-            
-            game->configurePlayer(RBX::Security::COM, data.substr(firstNewLineIndex+2), launchMode);
+
+            RC_PROBE("executeScript: calling configurePlayer json=%s\n",jdata.substr(firstNewLineIndex+2,80).c_str());
+            try {
+                game->configurePlayer(RBX::Security::COM, jdata.substr(firstNewLineIndex+2), launchMode);
+                RC_PROBE("executeScript: configurePlayer OK\n");
+            } catch (const std::exception& _e) {
+                RC_PROBE("executeScript: configurePlayer std::exception: %s\n",_e.what());
+            } catch (...) {
+                RC_PROBE("executeScript: configurePlayer unknown exception\n");
+            }
+            RC_PROBE("executeScript: calling loadContent placeID=%d\n", dm->getPlaceID());
+            try {
+                dm->loadContent(RBX::ContentId(RBX::format("rbxassetid://%d", dm->getPlaceID())));
+                RC_PROBE("loadContent DONE\n");
+            } catch (const std::exception& _e) {
+                RC_PROBE("loadContent EXCEPTION: %s\n", _e.what());
+            }
             return;
         }
+        RC_PROBE("executeScript: join.ashx branch: not JSON or bad NL, falling through\n");
     }
-    
+
+	RC_PROBE("executeScript: executeInNewThread\n");
 	RBX::ScriptContext* context = dm->create<RBX::ScriptContext>();
 	context->executeInNewThread(RBX::Security::COM, verifiedSource, "Start Game");
+	RC_PROBE("executeScript: done\n");
 }
 
 boost::shared_ptr<RBX::Game> RobloxView::startGame(std::string urlScript, const bool isApp) {
@@ -715,6 +789,451 @@ RobloxView *RobloxView::init_game(void *wnd, void* appwnd, const bool isApp)
 {
     boost::shared_ptr<RBX::Game> game(Roblox::getpreloadedGame(isApp));
     return new RobloxView(wnd, appwnd, game);
+}
+
+// Native offline movement: WASD walks relative to camera, Space jumps.
+// Fallback when ControlScript is missing or not yet loaded. If Camera is CUSTOM
+// (Lua CameraScript), do not force FOLLOW — let Lua own the camera.
+static void offlinePlayStep(weak_ptr<DataModel> weakDm, const Heartbeat& /*hb*/)
+{
+	shared_ptr<DataModel> dm = weakDm.lock();
+	if (!dm)
+		return;
+
+	ModelInstance* character = Network::Players::findLocalCharacter(dm.get());
+	Humanoid* humanoid = Humanoid::modelIsCharacter(character);
+	if (!humanoid)
+		return;
+
+	Workspace* ws = dm->getWorkspace();
+	Camera* cam = ws ? ws->getCamera() : NULL;
+	if (!cam)
+		return;
+
+	const bool luaCamera = (cam->getCameraType() == Camera::CUSTOM_CAMERA);
+	if (!luaCamera)
+	{
+		// Keep follow-cam glued to the humanoid (Studio free-fly uses FIXED + no subject).
+		if (cam->getCameraType() != Camera::FOLLOW_CAMERA &&
+			cam->getCameraType() != Camera::TRACK_CAMERA &&
+			cam->getCameraType() != Camera::ATTACH_CAMERA)
+		{
+			cam->setCameraType(Camera::FOLLOW_CAMERA);
+		}
+		if (cam->getCameraSubject() != humanoid)
+			cam->setCameraSubject(humanoid);
+	}
+
+	// If LocalPlayer has a ControlScript under PlayerScripts, still apply native
+	// WASD as a safety net (Lua modules can fail offline without web flags).
+	ControllerService* cs = ServiceProvider::find<ControllerService>(dm.get());
+	const UserInputBase* hw = cs ? cs->getHardwareDevice() : NULL;
+	if (!hw)
+		return;
+
+	NavKeys nav;
+	hw->getNavKeys(nav, dm->getSharedSuppressNavKeys());
+
+	// Camera-relative walk on the XZ plane (classic third-person).
+	Vector3 look = cam->getCameraCoordinateFrame().lookVector();
+	look.y = 0.0f;
+	if (look.unitize() < 1e-4f)
+		look = Vector3(0, 0, -1);
+	Vector3 right = look.cross(Vector3::unitY());
+	if (right.unitize() < 1e-4f)
+		right = Vector3(1, 0, 0);
+
+	Vector3 dir = Vector3::zero();
+	if (nav.forward())
+		dir += look;
+	if (nav.backward())
+		dir -= look;
+	if (nav.left())
+		dir -= right;
+	if (nav.right())
+		dir += right;
+
+	if (dir.squaredLength() > 1e-6f)
+		humanoid->setWalkDirection(dir.direction());
+	else
+		humanoid->setWalkDirection(Vector3::zero());
+
+	if (nav.space)
+		humanoid->setJump(true);
+}
+
+// Wire every shippable content/* asset the offline place can use without network.
+static void offlineEnsureWorldAssets(DataModel* dm)
+{
+	if (!dm)
+		return;
+
+	ContentProvider* cp = ServiceProvider::create<ContentProvider>(dm);
+
+	// --- Sky (content/sky JPGs always in content/; platform .tex also available) ---
+	Lighting* lighting = ServiceProvider::create<Lighting>(dm);
+	if (lighting)
+	{
+		Sky* sky = lighting->findFirstChildOfType<Sky>();
+		if (!sky)
+		{
+			shared_ptr<Sky> newSky = Creatable<Instance>::create<Sky>();
+			// Prefer classic plain sky faces shipped under content/sky/
+			newSky->setSkyboxBk(TextureId(ContentId::fromAssets("sky/null_plainsky512_bk.jpg")));
+			newSky->setSkyboxDn(TextureId(ContentId::fromAssets("sky/null_plainsky512_dn.jpg")));
+			newSky->setSkyboxFt(TextureId(ContentId::fromAssets("sky/null_plainsky512_ft.jpg")));
+			newSky->setSkyboxLf(TextureId(ContentId::fromAssets("sky/null_plainsky512_lf.jpg")));
+			newSky->setSkyboxRt(TextureId(ContentId::fromAssets("sky/null_plainsky512_rt.jpg")));
+			newSky->setSkyboxUp(TextureId(ContentId::fromAssets("sky/null_plainsky512_up.jpg")));
+			newSky->setParent(lighting);
+			sky = newSky.get();
+			RC_PROBE("offlineAssets: created Sky with content/sky null_plainsky*\n");
+		}
+		else
+		{
+			RC_PROBE("offlineAssets: place already has Sky\n");
+		}
+		// Pleasant daytime offline defaults
+		lighting->setTimeStr("14:00:00");
+	}
+
+	// --- Verify key content/* files resolve on disk (no CDN) ---
+	{
+		static const char* kPreload[] = {
+			"textures/face.png",
+			"textures/HurtOverlay.png",
+			"textures/ui/TopBar/dropshadow.png",
+			"textures/ui/Menu/Hamburger.png",
+			"textures/ui/Chat/Chat.png",
+			"textures/ui/Backpack/Backpack.png",
+			"textures/ui/Health-BKG-Center.png",
+			"sky/null_plainsky512_up.jpg",
+			"sky/sun.jpg",
+			"sky/moon.jpg",
+			"sounds/action_footsteps_plastic.mp3",
+			"sounds/action_jump.mp3",
+			"sounds/uuhhh.mp3",
+			"other/character3.rbxm",
+			"other/humanoidSoundNewLocal.rbxmx",
+			"other/humanoidAnimateLocalKeyframe2.rbxm",
+			"other/humanoidHealthRegenScript.rbxm",
+			NULL
+		};
+		int ok = 0, miss = 0;
+		for (int i = 0; kPreload[i]; ++i)
+		{
+			std::string path = ContentProvider::findAsset(ContentId::fromAssets(kPreload[i]));
+			if (!path.empty())
+				++ok;
+			else
+				++miss;
+		}
+		RC_PROBE("offlineAssets: preload check ok=%d miss=%d\n", ok, miss);
+		(void)cp;
+	}
+
+	// --- SpawnLocation if place has none (baseplate offline) ---
+	if (Workspace* ws = dm->getWorkspace())
+	{
+		if (!ws->findFirstChildOfType<SpawnLocation>())
+		{
+			shared_ptr<SpawnLocation> spawn = Creatable<Instance>::create<SpawnLocation>();
+			spawn->setName("SpawnLocation");
+			// Sit above typical baseplate so character doesn't fall through
+			CoordinateFrame cf;
+			cf.translation = Vector3(0, 5, 0);
+			spawn->setCoordinateFrame(cf);
+			spawn->setPartSizeXml(Vector3(6, 1, 6));
+			spawn->setAnchored(true);
+			spawn->setCanCollide(true);
+			spawn->setParent(ws);
+			RC_PROBE("offlineAssets: added SpawnLocation\n");
+		}
+	}
+
+	// Ensure StarterCharacterScripts container exists for character extras
+	if (StarterPlayerService* sps = ServiceProvider::create<StarterPlayerService>(dm))
+	{
+		if (!sps->findFirstChildOfType<StarterCharacterScripts>())
+		{
+			shared_ptr<StarterCharacterScripts> scs = Creatable<Instance>::create<StarterCharacterScripts>();
+			scs->setParent(sps);
+			RC_PROBE("offlineAssets: created StarterCharacterScripts\n");
+		}
+	}
+}
+
+// When StarterPlayer default scripts finish loading offline, copy into LocalPlayer.
+static void offlineDefaultScriptsReady(weak_ptr<DataModel> weakDm, weak_ptr<Network::Player> weakPlayer)
+{
+	shared_ptr<DataModel> dm = weakDm.lock();
+	shared_ptr<Network::Player> player = weakPlayer.lock();
+	if (!dm || !player)
+		return;
+
+	StarterPlayerService* starter = ServiceProvider::find<StarterPlayerService>(dm.get());
+	StarterPlayerScripts* sps = starter ? starter->findFirstChildOfType<StarterPlayerScripts>() : NULL;
+	if (!sps)
+		return;
+
+	PlayerScripts* ps = player->findFirstChildOfType<PlayerScripts>();
+	if (!ps)
+		return;
+
+	ps->CopyStarterPlayerScripts(sps);
+
+	int control = sps->findFirstChildByName("ControlScript") ? 1 : 0;
+	int camera = sps->findFirstChildByName("CameraScript") ? 1 : 0;
+	int psKids = (int)ps->numChildren();
+	RC_PROBE("offlineDefaultScriptsReady: starter control=%d camera=%d playerScriptsKids=%d\n", control, camera, psKids);
+}
+
+// Phase 3/4: Visit Solo offline — LocalPlayer, character, Run, default PlayerScripts.
+// Without NetworkClient/NetworkServer, both frontendProcessing and backendProcessing
+// are true (play-solo), so LoadCharacter is allowed on this process.
+static void startLocalPlay(shared_ptr<DataModel> dm)
+{
+	using namespace RBX::Network;
+
+	RC_PROBE("startLocalPlay: begin canCompileScripts=%d\n", LuaVM::canCompileScripts() ? 1 : 0);
+
+	// Not Studio edit: disables free-fly / edit camera interpolation paths.
+	RBX::GameBasicSettings::singleton().setStudioMode(false);
+	RBX::GameBasicSettings::singleton().setControlMode(RBX::GameBasicSettings::CONTROL_CLASSIC);
+
+	// CoreScripts (StarterScript → Topbar, etc.) load from content/scripts when canCompile.
+	// buildGui may already have called startCoreScripts; re-entry is gated by areCoreScriptsLoaded.
+	try
+	{
+		dm->startCoreScripts(true /* buildInGameGui */);
+		RC_PROBE("startLocalPlay: startCoreScripts ok\n");
+	}
+	catch (const std::exception& e)
+	{
+		RC_PROBE("startLocalPlay: startCoreScripts EXCEPTION %s\n", e.what());
+	}
+
+	// Sanity: can we still fetch StarterScript source from disk?
+	{
+		boost::optional<ProtectedString> ss = CoreScript::fetchSource("StarterScript");
+		RC_PROBE("startLocalPlay: StarterScript fetch %s bytes=%d\n", ss ? "OK" : "MISS", ss ? (int)ss->getSource().size() : 0);
+	}
+
+	Players* players = ServiceProvider::create<Players>(dm.get());
+	if (!players)
+	{
+		RC_PROBE("startLocalPlay: FAIL no Players service\n");
+		return;
+	}
+
+	// Ensure StarterPlayerScripts exist (workspaceLoaded may already have created them).
+	StarterPlayerScripts* starterScripts = NULL;
+	if (StarterPlayerService* starter = ServiceProvider::create<StarterPlayerService>(dm.get()))
+	{
+		starterScripts = starter->findFirstChildOfType<StarterPlayerScripts>();
+		if (!starterScripts)
+		{
+			shared_ptr<StarterPlayerScripts> scripts = Creatable<Instance>::create<StarterPlayerScripts>();
+			scripts->setParent(starter);
+			starterScripts = scripts.get();
+		}
+	}
+
+	Player* localPlayer = players->getLocalPlayer();
+	if (!localPlayer)
+	{
+		// userId=1 is a normal offline test id; name defaults to "Player"
+		players->createLocalPlayer(1, false);
+		localPlayer = players->getLocalPlayer();
+	}
+	if (!localPlayer)
+	{
+		RC_PROBE("startLocalPlay: FAIL createLocalPlayer\n");
+		return;
+	}
+	RC_PROBE("startLocalPlay: localPlayer ok userId=%d name=%s\n", localPlayer->getUserID(), localPlayer->getName().c_str());
+
+	// Sky, spawn, content preload — all from local content/ + PlatformContent
+	offlineEnsureWorldAssets(dm.get());
+
+	// Spawn classic R6 character (character3.rbxm from content/other)
+	try
+	{
+		localPlayer->luaLoadCharacter(true /* inGame: non-blocking appearance (empty offline) */);
+	}
+	catch (const std::exception& e)
+	{
+		RC_PROBE("startLocalPlay: loadCharacter EXCEPTION %s\n", e.what());
+		return;
+	}
+
+	ModelInstance* character = localPlayer->getCharacter();
+	Humanoid* humanoid = character ? Humanoid::modelIsCharacter(character) : NULL;
+	int charKids = character ? (int)character->numChildren() : 0;
+	int hasSound = character && character->findFirstChildByName("Sound") ? 1 : 0;
+	int hasAnimate = character && character->findFirstChildByName("Animate") ? 1 : 0;
+	int hasHealthScr = character && character->findFirstChildByName("Health") ? 1 : 0;
+	RC_PROBE("startLocalPlay: character=%p kids=%d humanoid=%p sound=%d animate=%d healthScr=%d\n",
+		(void*)character, charKids, (void*)humanoid, hasSound, hasAnimate, hasHealthScr);
+
+	// Follow-camera attached to Humanoid (native Camera::step path — not CUSTOM/Lua).
+	if (Workspace* ws = dm->getWorkspace())
+	{
+		// Play-mode mouse (not Studio tools)
+		ws->setDefaultMouseCommand();
+
+		if (Camera* cam = ws->getCamera())
+		{
+			if (humanoid)
+			{
+				cam->setCameraSubject(humanoid);
+				// FOLLOW: native step tracks subject; CUSTOM needs Lua CameraScript.
+				cam->setCameraType(Camera::FOLLOW_CAMERA);
+				// Frame behind character using torso position
+				Vector3 torsoPos = Vector3(0, 5, 0);
+				if (PartInstance* torso = humanoid->getTorsoSlow())
+					torsoPos = torso->getCoordinateFrame().translation;
+				Vector3 focus = torsoPos + Vector3(0, 2.0f, 0);
+				Vector3 behind = focus + Vector3(0, 4.0f, 14.0f);
+				cam->setCameraFocus(CoordinateFrame(focus));
+				cam->setCameraCoordinateFrame(CoordinateFrame(behind));
+				cam->setDistanceFromTarget(14.0f);
+			}
+			RC_PROBE("startLocalPlay: camera type=%d subject=%p\n", (int)cam->getCameraType(), (void*)cam->getCameraSubject());
+		}
+	}
+
+	// Physics + scripts run loop
+	RunService* runService = ServiceProvider::create<RunService>(dm.get());
+	if (runService)
+	{
+		runService->run();
+
+		// Phase 4: force default ControlScript/CameraScript load (no NetworkServer confirm path).
+		if (starterScripts)
+		{
+			g_offlineScriptsLoadedConnection.disconnect();
+			// If already loaded, copy immediately; else wait for async rbxmx load.
+			if (starterScripts->areDefaultScriptsLoaded())
+			{
+				offlineDefaultScriptsReady(weak_ptr<DataModel>(dm), weak_from(localPlayer));
+			}
+			else
+			{
+				g_offlineScriptsLoadedConnection = starterScripts->defaultScriptsLoadedSignal.connect(
+					boost::bind(&offlineDefaultScriptsReady, weak_ptr<DataModel>(dm), weak_from(localPlayer)));
+				starterScripts->InitializeDefaultScripts();
+				// Also drive the solo confirm path so PlayerScripts copies when ready.
+				starterScripts->requestDefaultScriptsServer(shared_from(localPlayer));
+			}
+			RC_PROBE("startLocalPlay: defaultScripts requested loaded=%d\n", starterScripts->areDefaultScriptsLoaded() ? 1 : 0);
+		}
+
+		// Drive WASD → Humanoid every heartbeat (fallback if ControlScript absent/broken)
+		g_offlinePlayStepConnection.disconnect();
+		g_offlinePlayStepConnection = runService->heartbeatSignal.connect(
+			boost::bind(&offlinePlayStep, weak_ptr<DataModel>(dm), _1));
+		RC_PROBE("startLocalPlay: RunService run state=%d offlineControl=1\n", (int)runService->getRunState());
+	}
+	else
+	{
+		RC_PROBE("startLocalPlay: FAIL no RunService\n");
+	}
+
+	// Note: Topbar builds async after LocalPlayer; pixel check + RC_PROBE CoreGui
+	// snapshot at DONE may still show topBar=0 for ~1s (expected).
+
+	dm->gameLoaded();
+
+	// Dismiss LoadingScript BlackFrame if it still exists (Phase 4 regression offline).
+	// ReplicatedFirst may not finish the normal join/replication dismiss path.
+	if (ReplicatedFirst* rf = ServiceProvider::create<ReplicatedFirst>(dm.get()))
+	{
+		if (!rf->getIsFinishedReplicating())
+			rf->setAllInstancesHaveReplicated(); // play-solo: fires FinishedReplicating
+		rf->doRemoveDefaultLoadingGui();
+	}
+	// Hard cleanup: LoadingScript parents ScreenGui → BlackFrame under CoreGui.
+	if (CoreGuiService* coreGui = ServiceProvider::find<CoreGuiService>(dm.get()))
+	{
+		int removed = 0;
+		if (Instance* bf = coreGui->findFirstChildByNameRecursive("BlackFrame"))
+		{
+			// Prefer destroying the ScreenGui that owns BlackFrame.
+			Instance* doomed = bf->getParent() ? bf->getParent() : bf;
+			if (doomed == static_cast<Instance*>(coreGui))
+				doomed = bf;
+			doomed->setParent(NULL);
+			++removed;
+		}
+		// Probe 2016 CoreGui chrome (Topbar / health / backpack icons).
+		int hasRobloxGui = coreGui->findFirstChildByName("RobloxGui") ? 1 : 0;
+		int hasTopBar = coreGui->findFirstChildByNameRecursive("TopBarContainer") ? 1 : 0;
+		int hasHealth = coreGui->findFirstChildByNameRecursive("HealthGui") ||
+			coreGui->findFirstChildByNameRecursive("HealthContainer") ||
+			coreGui->findFirstChildByNameRecursive("HealthFrame") ? 1 : 0;
+		int hasBackpack = coreGui->findFirstChildByNameRecursive("Backpack") ? 1 : 0;
+		int hasChat = coreGui->findFirstChildByNameRecursive("ChatWindow") ||
+			coreGui->findFirstChildByNameRecursive("ChatBar") ||
+			coreGui->findFirstChildByNameRecursive("ChatIcon") ? 1 : 0;
+		int modules = 0;
+		if (Instance* rg = coreGui->findFirstChildByName("RobloxGui"))
+		{
+			if (Instance* mods = rg->findFirstChildByName("Modules"))
+				modules = (int)mods->numChildren();
+		}
+		RC_PROBE("startLocalPlay: CoreGui robloxGui=%d topBar=%d health=%d backpack=%d chat=%d modules=%d loadRemoved=%d\n",
+			hasRobloxGui, hasTopBar, hasHealth, hasBackpack, hasChat, modules, removed);
+	}
+
+	RC_PROBE("startLocalPlay: DONE gameLoaded=1 followCam+wasd+corescripts\n");
+}
+
+static void loadPlaceFileTask(shared_ptr<DataModel> dm, std::string contentUrl)
+{
+	try
+	{
+		// Match Studio place open: elevated identity for restricted props (Debris MaxItems, etc.)
+		RBX::Security::Impersonator impersonate(RBX::Security::COM);
+		RC_PROBE("loadPlaceFile: WriteJob loadContent %s\n", contentUrl.c_str());
+		dm->loadContent(RBX::ContentId(contentUrl));
+		int kids = 0;
+		if (Workspace* ws = dm->getWorkspace())
+			kids = (int)ws->numChildren();
+		RC_PROBE("loadPlaceFile: OK workspaceChildren=%d\n", kids);
+
+		// Phase 3/4: local play loop after place is in the DataModel
+		startLocalPlay(dm);
+	}
+	catch (const std::exception& e)
+	{
+		RC_PROBE("loadPlaceFile: EXCEPTION %s\n", e.what());
+	}
+	catch (...)
+	{
+		RC_PROBE("loadPlaceFile: UNKNOWN EXCEPTION\n");
+	}
+}
+
+bool RobloxView::loadPlaceFile(const std::string& absolutePath)
+{
+	RC_PROBE("loadPlaceFile: path=%s\n", absolutePath.c_str());
+
+	shared_ptr<DataModel> dm = getDataModel();
+	if (!dm)
+	{
+		RC_PROBE("loadPlaceFile: no DataModel\n");
+		return false;
+	}
+
+	// ContentId::isFile requires "file://" + path. Absolute Unix paths start with '/'.
+	// IMPORTANT: do NOT LegacyLock on the main thread after RenderJob is running —
+	// it deadlocks waiting for the write slot. Schedule on the Write job instead.
+	const std::string contentUrl = "file://" + absolutePath;
+	dm->submitTask(boost::bind(&loadPlaceFileTask, dm, contentUrl), RBX::DataModelJob::Write);
+
+	RC_PROBE("loadPlaceFile: scheduled WriteJob\n");
+	return true;
 }
 
 void RobloxView::executeJoinScript(const std::string& urlScript, const bool isApp, const bool isFromProtocolHandler)

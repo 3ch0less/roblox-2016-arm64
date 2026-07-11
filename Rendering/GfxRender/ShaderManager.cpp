@@ -1,3 +1,6 @@
+#include <cstdarg>
+#include <cstdlib>
+#include <cstdio>
 #include "stdafx.h"
 #include "ShaderManager.h"
 
@@ -16,6 +19,17 @@
 #include "StringConv.h"
 
 LOGGROUP(Graphics)
+
+
+// Phase 4: probe gated by RC_PROBE=1
+static void rc_probe_shader(const char* fmt, ...) {
+	const char* e = getenv("RC_PROBE");
+	if (!e || !e[0] || e[0]=='0') return;
+	FILE* f = fopen("/tmp/rc_probe.log","a");
+	if (!f) return;
+	va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
+	fclose(f);
+}
 
 namespace RBX
 {
@@ -37,7 +51,12 @@ struct PackData
 
     const PackEntryFile* findEntry(const char* name) const
 	{
+        if (data.size() < 8)
+            return NULL;
         unsigned int count = *reinterpret_cast<const unsigned int*>(&data[4]);
+        if (count == 0) return NULL;
+        if (data.size() < 8 + (size_t)count * sizeof(PackEntryFile))
+            return NULL;
         const PackEntryFile* entries = reinterpret_cast<const PackEntryFile*>(&data[8]);
 
         for (unsigned int i = 0; i < count; ++i)
@@ -137,6 +156,7 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
 	if (device->getCaps().supportsFFP)
 	{
         FASTLOG(FLog::Graphics, "Skipping shader loading since device does not support them");
+		rc_probe_shader("loadShaders: skip supportsFFP language=%s\n", language.c_str());
         return;
 	}
 
@@ -145,7 +165,35 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
     Timer<Time::Precise> timer;
 
 	std::string packName = getPackName(language);
-	PackData shaderPack = readPack(folder, "shaders_" + packName + ".pack");
+	rc_probe_shader("loadShaders: folder=%s language=%s packName=%s\n", folder.c_str(), language.c_str(), packName.c_str());
+	// Empty/stub packs (ARM64 port: ShaderCompiler stub) — do not hard-fail init.
+	// Allows OpenGL window/first paint with missing GLSL bytecode; Phase 2 rebuilds real packs.
+	PackData shaderPack;
+	try
+	{
+		shaderPack = readPack(folder, "shaders_" + packName + ".pack");
+	}
+	catch (const std::exception& e)
+	{
+		FASTLOGS(FLog::Graphics, "Shader pack load failed (continuing without shaders): %s", e.what());
+		rc_probe_shader("loadShaders: pack load FAILED: %s\n", e.what());
+		return;
+	}
+	if (shaderPack.data.size() < 8)
+	{
+		FASTLOG(FLog::Graphics, "Shader pack is empty/stub — skipping shader load (OpenGL window may still open)");
+		rc_probe_shader("loadShaders: empty/stub pack size=%zu\n", shaderPack.data.size());
+		return;
+	}
+	{
+		unsigned int count = *reinterpret_cast<const unsigned int*>(&shaderPack.data[4]);
+		rc_probe_shader("loadShaders: pack size=%zu entries=%u\n", shaderPack.data.size(), count);
+		if (count == 0)
+		{
+			FASTLOG(FLog::Graphics, "Shader pack has 0 entries — skipping shader load");
+			return;
+		}
+	}
 
 	std::string shaderDb = loadShaderFile(folder, "shaders.json");
     std::string sourceFolder = folder + "/source";
@@ -241,6 +289,7 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
 		catch (const RBX::base_exception& e)
 		{
 			FASTLOGS(FLog::Graphics, "Error: failed to create shader %s", name.GetString());
+			rc_probe_shader("loadShaders: FAIL create %s: %s\n", name.GetString(), e.what());
 			ShaderProgram::dumpToFLog(e.what(), FLog::Graphics);
 
 			if (consoleOutput)
@@ -263,6 +312,7 @@ void ShaderManager::loadShaders(const std::string& folder, const std::string& la
 
     FASTLOGS(FLog::Graphics, "Loaded shaders from folder %s", sourceFolder);
 	FASTLOG3(FLog::Graphics, "Compiled %d VS %d FS in %d ms", vertexShaders.size(), fragmentShaders.size(), static_cast<int>(timer.delta().msec()));
+	rc_probe_shader("loadShaders: DONE VS=%zu FS=%zu ms=%d pack=%s\n", vertexShaders.size(), fragmentShaders.size(), static_cast<int>(timer.delta().msec()), packName.c_str());
 }
 
 shared_ptr<ShaderProgram> ShaderManager::getProgram(const std::string& vsName, const std::string& fsName)

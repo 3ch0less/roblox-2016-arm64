@@ -40,7 +40,9 @@
 
 LOGGROUP(UserInputProfile)
 
-FASTFLAGVARIABLE(UseInGameTopBar, false)
+// 2016-era in-game chrome (Topbar + Chat + Playerlist). Offline ARM64 port
+// keeps this on so CoreGui matches the 2016 client without server FFlags.
+FASTFLAGVARIABLE(UseInGameTopBar, true)
 FASTFLAGVARIABLE(MobileToggleChatVisibleIcon, false)
 DYNAMIC_FASTINTVARIABLE(MoveInGameChatToTopPlaceId, 0)
 FASTFLAGVARIABLE(LuaChatPhoneFontSize, false)

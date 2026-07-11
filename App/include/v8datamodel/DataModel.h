@@ -463,12 +463,12 @@ public:
 	};
 
 	// Please call these to construct and release a datamodel
-	static shared_ptr<DataModel> createDataModel(bool startHeartbeat, RBX::Verb* lockVerb, bool shouldShowLoadingScreen);
+	static shared_ptr<DataModel> createDataModel(bool startHeartbeat, RBX::Verb* lockVerb, bool shouldShowLoadingScreen, int placeId = 0);
     
 	static void closeDataModel(shared_ptr<DataModel> dataModel);
     
 	~DataModel();
-	DataModel(RBX::Verb* lockVerb);
+	DataModel(RBX::Verb* lockVerb, int placeId = 0);
 	static DataModel* get(Instance* context) ;
 	static const DataModel* get(const Instance* context) ;
 

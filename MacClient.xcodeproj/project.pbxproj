@@ -2359,7 +2359,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Change the look up for all 3rd Part dylibs\ninstall_name_tool -change ./libfmod.dylib @executable_path/../Frameworks/libfmod.dylib \"${CONFIGURATION_BUILD_DIR}/RobloxPlayer.app/Contents/MacOS/RobloxPlayer\"\ninstall_name_tool -change ./libLog.dylib @executable_path/../Frameworks/libLog.dylib \"${CONFIGURATION_BUILD_DIR}/RobloxPlayer.app/Contents/MacOS/RobloxPlayer\"";
+			shellScript = "# Fix dylib lookup paths embedded in RobloxPlayer + Frameworks copies\nEXE=\"${CONFIGURATION_BUILD_DIR}/RobloxPlayer.app/Contents/MacOS/RobloxPlayer\"\nFW=\"${CONFIGURATION_BUILD_DIR}/RobloxPlayer.app/Contents/Frameworks\"\n# libLog (modern clang emits /libLog.dylib; older builds used ./libLog.dylib)\ninstall_name_tool -change ./libLog.dylib @executable_path/../Frameworks/libLog.dylib \"$EXE\" 2>/dev/null || true\ninstall_name_tool -change /libLog.dylib @executable_path/../Frameworks/libLog.dylib \"$EXE\" 2>/dev/null || true\ninstall_name_tool -change libLog.dylib @executable_path/../Frameworks/libLog.dylib \"$EXE\" 2>/dev/null || true\nif [ -f \"$FW/libLog.dylib\" ]; then\n  install_name_tool -id @executable_path/../Frameworks/libLog.dylib \"$FW/libLog.dylib\" 2>/dev/null || true\nfi\n# fmod\ninstall_name_tool -change ./libfmod.dylib @executable_path/../Frameworks/libfmod.dylib \"$EXE\" 2>/dev/null || true\ninstall_name_tool -change libfmod.dylib @executable_path/../Frameworks/libfmod.dylib \"$EXE\" 2>/dev/null || true\nif [ -f \"$FW/libfmod.dylib\" ]; then\n  install_name_tool -id @executable_path/../Frameworks/libfmod.dylib \"$FW/libfmod.dylib\" 2>/dev/null || true\nfi\n";
 		};
 		27F7B66C13393EE3001191CC /* Generate MD5 */ = {
 			isa = PBXShellScriptBuildPhase;

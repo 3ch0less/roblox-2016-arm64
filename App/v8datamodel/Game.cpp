@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include <cstdio>
 
 #include "v8datamodel/Game.h"
 #include "v8datamodel/factoryregistration.h"
@@ -45,8 +46,8 @@ namespace RBX {
 
 	static boost::shared_ptr<ProfanityFilter> s_profanityFilter;
 
-	SecurePlayerGame::SecurePlayerGame(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen)
-		:Game(lockVerb, baseUrl, shouldShowLoadingScreen)
+	SecurePlayerGame::SecurePlayerGame(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen, int placeId)
+		:Game(lockVerb, baseUrl, shouldShowLoadingScreen, placeId)
 	{
 		static boost::once_flag flag = BOOST_ONCE_INIT;
 #if 1
@@ -124,10 +125,9 @@ namespace RBX {
 	}
     
 	void Game::setupDataModel(const std::string& baseUrl)
-    {        
+    {
 		dataModel->create<ScriptInformationProvider>()->setAssetUrl(baseUrl + "/asset/");
 		dataModel->create<ContentProvider>()->setBaseUrl(baseUrl);
-
 		dataModel->setGame(this);
         
         commonVerbs.reset(new CommonVerbs(dataModel.get()));
@@ -164,10 +164,10 @@ namespace RBX {
 		RBX::GameBasicSettings::singleton().recordSettingsInGA(touchEnabled);
     }
 
-	Game::Game(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen) :
+	Game::Game(Verb* lockVerb, const char* baseUrl, bool shouldShowLoadingScreen, int placeId) :
 		hasShutdown(false)
 	{
-	    dataModel = DataModel::createDataModel(true, lockVerb, shouldShowLoadingScreen);
+	    dataModel = DataModel::createDataModel(true, lockVerb, shouldShowLoadingScreen, placeId);
 		dataModel->submitTask(boost::bind(&Game::setupDataModel, this, std::string(baseUrl)), DataModelJob::Write);
 	}
 

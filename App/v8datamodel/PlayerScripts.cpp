@@ -173,6 +173,20 @@ static void addChildToInstance(const weak_ptr<Instance>& parent, const shared_pt
 
 static void PlayerScriptsLoadHelper(weak_ptr<StarterPlayerScripts> playerScripts, AsyncHttpQueue::RequestResult result, shared_ptr<Instances> instances)
 {
+	if (const char* e = getenv("RC_PROBE"))
+	{
+		if (e[0] && e[0] != '0')
+		{
+			FILE* _p = fopen("/tmp/rc_probe.log", "a");
+			if (_p)
+			{
+				fprintf(_p, "PlayerScriptsLoadHelper: result=%d instances=%d\n",
+					(int)result, instances ? (int)instances->size() : -1);
+				fclose(_p);
+			}
+		}
+	}
+
 	if(result == AsyncHttpQueue::Succeeded){
 		std::for_each(instances->begin(), instances->end(), boost::bind(&addChildToInstance, playerScripts, _1));
 		shared_ptr<StarterPlayerScripts> p(playerScripts.lock());
@@ -200,6 +214,18 @@ void StarterPlayerScripts::InitializeDefaultScripts()
 	}
 
 	defaultScriptsLoadRequested = true;
+
+	// Offline probe (gated by RC_PROBE=1)
+	{
+		FILE* _p = fopen("/tmp/rc_probe.log", "a");
+		if (_p && getenv("RC_PROBE") && getenv("RC_PROBE")[0] != '0')
+		{
+			fprintf(_p, "InitializeDefaultScripts: requested control=%d camera=%d\n",
+				controlScript ? 1 : 0, cameraScript ? 1 : 0);
+			fclose(_p);
+		}
+		else if (_p) fclose(_p);
+	}
 }
 
 void StarterPlayerScripts::InitializeDefaultScriptsRunService(RunTransition transition)

@@ -37,7 +37,8 @@
 #include "v8datamodel/Stats.h"
 
 FASTFLAGVARIABLE(DebugDisplayFPS, false)
-FASTFLAGVARIABLE(LuaBasedBubbleChat, false)
+// Match 2016 client bubble chat (Lua path); textures live under content/textures/.
+FASTFLAGVARIABLE(LuaBasedBubbleChat, true)
 
 using namespace G3D;
 
@@ -381,14 +382,19 @@ void GuiBuilder::buildLuaGui()
 
 	//////////////////////// COREGUI SETUP //////////////////////////////////////
 
-	// Add gui into CoreGuiService
+	// Parent under CoreGui.RobloxGui so CoreScripts (StarterScript / Topbar /
+	// touch ControlFrame waits) see the same hierarchy as the 2016 client.
 	shared_ptr<CoreGuiService> coreGuiService = shared_from(dataModel->find<CoreGuiService>());
+	shared_ptr<ScreenGui> robloxGui = coreGuiService ? coreGuiService->getRobloxScreenGui() : shared_ptr<ScreenGui>();
 	
 	bottomLeftControl->setParent(controls.get());
 	bottomRightControl->setParent(controls.get());
 	topLeftControl->setParent(controls.get());
 
-	coreGuiService->addChild(controls.get());
+	if (robloxGui)
+		controls->setParent(robloxGui.get());
+	else if (coreGuiService)
+		coreGuiService->addChild(controls.get());
 }
     
 void GuiBuilder::updateGui()
