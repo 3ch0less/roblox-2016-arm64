@@ -926,7 +926,7 @@ namespace RBX
 		// Offline: map CDN/HTTP asset URLs onto local rbxasset files when possible
 		contentId.tryConvertHttpToLocalAsset();
 
-		RBXASSERT(contentId.isAsset() || contentId.isAppContent());
+		// Soft fail: offline/unknown URLs must not abort (Debug RBXASSERT used to kill the player).
 		if (!contentId.isAsset() && !contentId.isAppContent())
 			return "";
 

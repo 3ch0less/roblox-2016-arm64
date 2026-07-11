@@ -15,7 +15,8 @@
 #include "rbx/Profiler.h"
 
 DYNAMIC_FASTFLAGVARIABLE(AnimationAllowProdUrls, true);
-DYNAMIC_FASTFLAGVARIABLE(DontUseInsertServiceOnAnimLoad, false)
+// Prefer ContentProvider (supports offline rbxasset reverse-map) over InsertService CDN.
+DYNAMIC_FASTFLAGVARIABLE(DontUseInsertServiceOnAnimLoad, true)
 DYNAMIC_FASTFLAGVARIABLE(AnimationFailedToLoadContext, false)
 
 namespace RBX
@@ -211,26 +212,66 @@ static void doNothingErrorHandler(std::string err, const std::string context)
 shared_ptr<KeyframeSequence> KeyframeSequenceProvider::privateGetKeyframeSequence(ContentId assetId, bool blocking, bool useCache, const std::string& contextString, const Instance* contextInstance)
 {
 	std::string assetIdNumber;
-	if(assetId.isHttp() || assetId.isAsset() || assetId.isAssetId())
+
+	// Offline ARM64: resolve CDN/HTTP/assetid → content/animations/r6/... before any rewrite.
+	// Never rewrite existing rbxasset:// paths into localhost HTTP (that broke offline R6).
 	{
-		std::string url = ""; 
-		std::string assetString(assetId.c_str()); 		
-		unsigned pos = 12; // this is the size of the AssetId header "rbxassetid://"
-		if (!assetId.isAssetId()) 
+		ContentId local = assetId;
+		if (local.tryConvertHttpToLocalAsset() && local.isAsset()
+			&& !ContentProvider::findAsset(local).empty())
 		{
-			pos = assetString.find_last_of("=");  // if it's not an AssetId, find the id in the string
+			assetId = local;
 		}
-		if (DFFlag::AnimationAllowProdUrls && boost::starts_with(assetId.toString(), "http://www.roblox.com"))	{
-			url.append("http://www.roblox.com"); 
-		}
-		else {
-			url.append(ServiceProvider::create<ContentProvider>(this)->getBaseUrl()); 
-		}
-		assetIdNumber = assetString.substr(pos+1, assetString.length());
-		url.append("/asset/?id=").append(assetIdNumber); 		
-		url.append("&serverplaceid=").append(format("%d", DataModel::get(this)->getPlaceIDOrZeroInStudio()));
-		assetId = ContentId(url); 
 	}
+
+	// Only HTTP / rbxassetid:// get rewritten to baseUrl form. rbxasset:// stays local.
+	if (assetId.isHttp() || assetId.isAssetId())
+	{
+		std::string assetString(assetId.c_str());
+		if (assetId.isAssetId())
+		{
+			assetIdNumber = assetString.substr(13);
+		}
+		else
+		{
+			// Prefer id= query param; never find_last_of('=') (breaks &serverplaceid=0)
+			std::string lower = boost::algorithm::to_lower_copy(assetString);
+			size_t pos = lower.find("id=");
+			if (pos != std::string::npos)
+			{
+				pos += 3;
+				while (pos < assetString.size() && (assetString[pos] == ' ' || assetString[pos] == '+'))
+					++pos;
+				size_t end = pos;
+				while (end < assetString.size() && isdigit(static_cast<unsigned char>(assetString[end])))
+					++end;
+				assetIdNumber = assetString.substr(pos, end - pos);
+			}
+		}
+
+		// If still no local pack, build request URL for online/InsertService path
+		ContentId retryLocal = ContentId::fromUrl(
+			std::string("http://www.roblox.com/asset/?id=") + assetIdNumber);
+		if (!assetIdNumber.empty()
+			&& retryLocal.tryConvertHttpToLocalAsset()
+			&& retryLocal.isAsset()
+			&& !ContentProvider::findAsset(retryLocal).empty())
+		{
+			assetId = retryLocal;
+		}
+		else
+		{
+			std::string url;
+			if (DFFlag::AnimationAllowProdUrls && boost::starts_with(assetString, "http://www.roblox.com"))
+				url.append("http://www.roblox.com");
+			else
+				url.append(ServiceProvider::create<ContentProvider>(this)->getBaseUrl());
+			url.append("/asset/?id=").append(assetIdNumber);
+			url.append("&serverplaceid=").append(format("%d", DataModel::get(this)->getPlaceIDOrZeroInStudio()));
+			assetId = ContentId(url);
+		}
+	}
+
 	AnimationId animationId(assetId);
 	if(animationId.isActive()){
 		if(activeKeyframeTable.find(animationId.toString()) != activeKeyframeTable.end()){
@@ -266,20 +307,25 @@ shared_ptr<KeyframeSequence> KeyframeSequenceProvider::privateGetKeyframeSequenc
 		}
 	}
 
-	if (!DFFlag::DontUseInsertServiceOnAnimLoad && !blocking && (assetId.isHttp() || assetId.isAsset()))
+	const bool haveLocalFile = assetId.isAsset() && !ContentProvider::findAsset(assetId).empty();
+	// Local packs must load synchronously so LoadAnimation/Play sees real keyframes.
+	if (haveLocalFile)
+		blocking = true;
+
+	if (!DFFlag::DontUseInsertServiceOnAnimLoad && !blocking && !haveLocalFile && assetId.isHttp())
 	{
 		RBXASSERT(!blocking);
-		int assetId = -1;
+		int assetIdNum = -1;
 		bool parsedAssetIdFromString = false;
 		try
 		{
-			assetId = boost::lexical_cast<int>(assetIdNumber);
+			assetIdNum = boost::lexical_cast<int>(assetIdNumber);
 			parsedAssetIdFromString = true;
 		}
 		catch (...) {}
 		if (parsedAssetIdFromString)
 		{
-			ServiceProvider::create<InsertService>(this)->loadAsset(assetId,
+			ServiceProvider::create<InsertService>(this)->loadAsset(assetIdNum,
 				boost::bind(&loadDataFromInsertService, _1,  weak_from(this), boost::weak_ptr<KeyframeSequence>(keyframeSequence), false, newContext),
 				boost::bind(&doNothingErrorHandler, _1, newContext));
 		}
@@ -288,7 +334,10 @@ shared_ptr<KeyframeSequence> KeyframeSequenceProvider::privateGetKeyframeSequenc
 	{
 		if(blocking){
 			std::auto_ptr<std::istream> stream = ServiceProvider::create<ContentProvider>(this)->getContent(assetId);
-			SyncKeyframeLoaderHelper(AsyncHttpQueue::Succeeded, stream.get(), weak_from(this), keyframeSequence, newContext);
+			if (stream.get())
+				SyncKeyframeLoaderHelper(AsyncHttpQueue::Succeeded, stream.get(), weak_from(this), keyframeSequence, newContext);
+			else
+				SyncKeyframeLoaderHelper(AsyncHttpQueue::Failed, NULL, weak_from(this), keyframeSequence, newContext);
 		}
 		else{
 			ServiceProvider::create<ContentProvider>(this)->getContent(assetId, ContentProvider::PRIORITY_ANIMATION, boost::bind(&AsyncKeyframeLoaderHelper, _1, _2, weak_from(this), boost::weak_ptr<KeyframeSequence>(keyframeSequence), newContext));

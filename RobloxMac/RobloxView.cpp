@@ -917,6 +917,12 @@ static void offlineEnsureWorldAssets(DataModel* dm)
 			"other/humanoidSoundNewLocal.rbxmx",
 			"other/humanoidAnimateLocalKeyframe2.rbxm",
 			"other/humanoidHealthRegenScript.rbxm",
+			// Modern R6 keyframe pack (walk/idle/jump/...)
+			"animations/r6/180426354.rbxm",
+			"animations/r6/180435571.rbxm",
+			"animations/r6/125750702.rbxm",
+			"animations/r6/180436148.rbxm",
+			"animations/r6/180436334.rbxm",
 			NULL
 		};
 		int ok = 0, miss = 0;
@@ -929,6 +935,43 @@ static void offlineEnsureWorldAssets(DataModel* dm)
 				++miss;
 		}
 		RC_PROBE("offlineAssets: preload check ok=%d miss=%d\n", ok, miss);
+
+		// Warm-deserialize modern R6 keyframes from local content/ (no HTTP).
+		static const char* kAnimWarm[] = {
+			"animations/r6/180426354.rbxm", // walk
+			"animations/r6/180435571.rbxm", // idle
+			"animations/r6/180435792.rbxm", // idle2
+			"animations/r6/125750702.rbxm", // jump
+			"animations/r6/180436148.rbxm", // fall
+			"animations/r6/180436334.rbxm", // climb
+			"animations/r6/178130996.rbxm", // sit
+			NULL
+		};
+		int animOk = 0, animFail = 0;
+		for (int i = 0; kAnimWarm[i]; ++i)
+		{
+			ContentId cid = ContentId::fromAssets(kAnimWarm[i]);
+			std::string onDisk = ContentProvider::findAsset(cid);
+			if (onDisk.empty())
+			{
+				++animFail;
+				continue;
+			}
+			try
+			{
+				Instances dump;
+				cp->blockingLoadInstances(cid, dump);
+				if (!dump.empty())
+					++animOk;
+				else
+					++animFail;
+			}
+			catch (...)
+			{
+				++animFail;
+			}
+		}
+		RC_PROBE("offlineAssets: r6 anim warm ok=%d fail=%d\n", animOk, animFail);
 		(void)cp;
 	}
 

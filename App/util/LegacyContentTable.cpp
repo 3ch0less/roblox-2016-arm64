@@ -747,6 +747,32 @@ namespace RBX
             AddEntryProd("rbxasset://textures/woodplanks/specular.dds", "161854228");
         #endif
         }
+
+		// Offline R6 keyframe pack (humanoidAnimateLocalKeyframe2.rbxm CDN ids → content/animations/r6/)
+		// Modern 2015-2016 R6 walk/idle/jump/fall/climb/sit/tools/emotes without roblox.com.
+		AddEntry("rbxasset://animations/r6/125750702.rbxm", "125750702"); // jump
+		AddEntry("rbxasset://animations/r6/128777973.rbxm", "128777973"); // wave
+		AddEntry("rbxasset://animations/r6/128853357.rbxm", "128853357"); // point
+		AddEntry("rbxasset://animations/r6/129423030.rbxm", "129423030"); // cheer
+		AddEntry("rbxasset://animations/r6/129423131.rbxm", "129423131"); // laugh
+		AddEntry("rbxasset://animations/r6/129967390.rbxm", "129967390"); // toolslash
+		AddEntry("rbxasset://animations/r6/129967478.rbxm", "129967478"); // toollunge
+		AddEntry("rbxasset://animations/r6/178130996.rbxm", "178130996"); // sit
+		AddEntry("rbxasset://animations/r6/180426354.rbxm", "180426354"); // walk
+		AddEntry("rbxasset://animations/r6/180435571.rbxm", "180435571"); // idle
+		AddEntry("rbxasset://animations/r6/180435792.rbxm", "180435792"); // idle2
+		AddEntry("rbxasset://animations/r6/180436148.rbxm", "180436148"); // fall
+		AddEntry("rbxasset://animations/r6/180436334.rbxm", "180436334"); // climb
+		AddEntry("rbxasset://animations/r6/182393478.rbxm", "182393478"); // toolnone
+		AddEntry("rbxasset://animations/r6/182435998.rbxm", "182435998"); // dance1
+		AddEntry("rbxasset://animations/r6/182436842.rbxm", "182436842"); // dance2
+		AddEntry("rbxasset://animations/r6/182436935.rbxm", "182436935"); // dance3
+		AddEntry("rbxasset://animations/r6/182491037.rbxm", "182491037"); // dance1b
+		AddEntry("rbxasset://animations/r6/182491065.rbxm", "182491065"); // dance1c
+		AddEntry("rbxasset://animations/r6/182491248.rbxm", "182491248"); // dance2b
+		AddEntry("rbxasset://animations/r6/182491277.rbxm", "182491277"); // dance2c
+		AddEntry("rbxasset://animations/r6/182491368.rbxm", "182491368"); // dance3b
+		AddEntry("rbxasset://animations/r6/182491423.rbxm", "182491423"); // dance3c
 	}
 	
 	void LegacyContentTable::AddEntry(const std::string& path, const std::string& contentId)

@@ -2060,6 +2060,7 @@ void Player::loadCharacter(bool inGame, std::string preferedSpawnName)
 				{
 					ServiceProvider::create<ContentProvider>(this)->blockingLoadInstances(ContentId::fromAssets("other/humanoidAnimateR15.rbxm"), extraAnimate);
 				} else {
+					// 2015-2016 R6 keyframe animate; CDN ids resolve via content/animations/r6 + LegacyContentTable
 					ServiceProvider::create<ContentProvider>(this)->blockingLoadInstances(ContentId::fromAssets("other/humanoidAnimateLocalKeyframe2.rbxm"), extraAnimate);
 				}
 				std::for_each(extraAnimate.begin(), extraAnimate.end(), boost::bind(&addChild, model, _1));
@@ -2085,6 +2086,7 @@ void Player::loadCharacter(bool inGame, std::string preferedSpawnName)
 		{
 			ServiceProvider::create<ContentProvider>(this)->blockingLoadInstances(ContentId::fromAssets("other/humanoidAnimateR15.rbxm"), extraAnimate);
 		} else {
+			// 2015-2016 R6 keyframe animate; CDN ids resolve via content/animations/r6 + LegacyContentTable
 			ServiceProvider::create<ContentProvider>(this)->blockingLoadInstances(ContentId::fromAssets("other/humanoidAnimateLocalKeyframe2.rbxm"), extraAnimate);
 		}
 		std::for_each(extraAnimate.begin(), extraAnimate.end(), boost::bind(&addChild, model, _1));
